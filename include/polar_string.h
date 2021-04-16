@@ -69,6 +69,9 @@ inline std::string PolarString::ToString() const {
     return result;
 }
 
+/**
+    * @return positive if a > b, negative if a < b, 0 if a == b
+ */
 inline int PolarString::compare(const PolarString& b) const {
     const size_t min_len = (size_ < b.size_) ? size_ : b.size_;
     int r = memcmp(data_, b.data_, min_len);
