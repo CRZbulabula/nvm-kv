@@ -187,7 +187,7 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 //     return i;
 // }
 
-RetCode bplus_tree::insert(const polar_race::PolarString& key, polar_race::PolarString value)
+RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value)
 {
 	off_t parent = search_index(key);
 	off_t offset = search_leaf(parent, key);

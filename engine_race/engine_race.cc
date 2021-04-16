@@ -64,7 +64,7 @@ EngineRace::~EngineRace() {
 // 3. Write a key-value pair into engine
 RetCode EngineRace::Write(const PolarString& key, const PolarString& value) {
 	pthread_mutex_lock(&mu_);
-	RetCode ret = store.insert(key, value);
+	RetCode ret = store.insert_or_update(key, value);
 	// Location location;
 	// RetCode ret = store_.Append(value.ToString(), &location);
 	// if (ret == kSucc) {

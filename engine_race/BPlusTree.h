@@ -85,7 +85,7 @@ class bplus_tree {
 
 		// int search_range(polar_race::PolarString *left, const polar_race::PolarString &right,
 		//                 value_t *values, size_t max, bool *next = NULL) const;
-		RetCode insert(const polar_race::PolarString& key, polar_race::PolarString value);
+		RetCode insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value);
 		metaData getMeta() const {
 			return meta;
 		};
