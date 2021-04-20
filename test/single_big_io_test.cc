@@ -8,9 +8,9 @@
 
 using namespace polar_race;
 
-#define KV_CNT 10000
+#define KV_CNT 100000
 
-char k[1024];
+char k[8192];
 char v[9024];
 std::string ks[KV_CNT];
 std::string vs_1[KV_CNT];
@@ -18,7 +18,7 @@ std::string vs_2[KV_CNT];
 int main() {
 	Engine *engine = NULL;
 	printf_(
-		"======================= single thread test "
+		"======================= single big io test "
 		"============================");
 #ifdef MOCK_NVM
 	std::string engine_path =
@@ -30,66 +30,33 @@ int main() {
 	assert(ret == kSucc);
 	printf("open engine_path: %s\n", engine_path.c_str());
 
-	/////////////////////////////////
-	gen_random(k, 23);
-	gen_random(v, 1);
-
-	std::string value;
-	ret = engine->Read(k, &value);
-	assert(ret == kNotFound);
-
-	ret = engine->Write(k, v);
-	assert(ret == kSucc);
-
-	ret = engine->Read(k, &value);
-	assert(ret == kSucc);
-	assert(value == v);
-
-	gen_random(v, 111);
-	ret = engine->Write(k, v);
-	assert(ret == kSucc);
-
-	ret = engine->Read(k, &value);
-	assert(ret == kSucc);
-	assert(value == v);
-
-	////////////////////////////////////
-	gen_random(k, 13);
-	gen_random(v, 4097);
-
-	ret = engine->Write(k, v);
-	assert(ret == kSucc);
-
-	ret = engine->Read(k, &value);
-	assert(ret == kSucc);
-	assert(value == v);
-
 	///////////////////////////////////
 	for (int i = 0; i < KV_CNT; ++i) {
-		gen_random(k, 6);
+		gen_random(k, 16);
 		ks[i] = std::string(k) + std::to_string(i);
-		gen_random(v, 1027);
+		gen_random(v, 16);
 		vs_1[i] = v;
-		gen_random(v, 1027);
+		gen_random(v, 16);
 		vs_2[i] = v;
 	}
 
-	//printf("gen OK\n");
+	printf("gen OK\n");
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Write(ks[i], vs_1[i]);
 		assert(ret == kSucc);
 	}
 	
-	//printf("write OK\n");
+	printf("write OK\n");
 
+    std::string value;
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Read(ks[i], &value);
 		assert(ret == kSucc);
 		assert(value == vs_1[i]);
 	}
 	
-    //printf("read OK\n");
+    printf("read OK\n");
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		if (i % 2 == 0) {
@@ -109,6 +76,8 @@ int main() {
 		}
 	}
 
+    printf("repeat io OK\n");
+
 	delete engine;
 
 	// re-open
@@ -126,7 +95,7 @@ int main() {
 	}
 
 	printf_(
-		"======================= single thread test pass :) "
+		"======================= single big io test pass :) "
 		"======================");
 
 	return 0;

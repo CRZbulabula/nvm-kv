@@ -41,7 +41,7 @@ inline record *find(leafNode &node, const polar_race::PolarString &key) {
 
 // 	if (!force_empty)
 // 		// read tree from file
-// 		if (map(&meta, OFFSET_META) != 0)
+// 		if (disk_read(&meta, OFFSET_META) != 0)
 // 			force_empty = true;
 
 // 	if (force_empty) {
@@ -57,7 +57,7 @@ RetCode bplus_tree::init(const char *p)
 {
 	bzero(path, sizeof(path));
 	strcpy(path, p);
-	if (map(&meta, OFFSET_META) != 0) {
+	if (disk_read(&meta, OFFSET_META) != 0) {
 		RetCode ret = open_file("w+");
 		if (ret != polar_race::kSucc) {
 			return ret;
@@ -66,8 +66,6 @@ RetCode bplus_tree::init(const char *p)
 		// init default meta
 		bzero(&meta, sizeof(metaData));
 		meta.order = childSize;
-		meta.value_size = sizeof(polar_race::PolarString);
-		meta.key_size = sizeof(polar_race::PolarString);
 		meta.height = 1;
 		meta.slot = OFFSET_BLOCK;
 
@@ -83,13 +81,12 @@ RetCode bplus_tree::init(const char *p)
 		meta.leaf_offset = root.children[0].child = alloc(&leaf);
 
 		// save
-		unmap(&meta, OFFSET_META);
-		unmap(&root, meta.root_offset);
-		unmap(&leaf, root.children[0].child);
+		disk_write(&meta, OFFSET_META);
+		disk_write(&root, meta.root_offset);
+		disk_write(&leaf, root.children[0].child);
 		ret = close_file();
 		return ret;
 	}
-
 	return polar_race::kSucc;
 }
 
@@ -99,7 +96,7 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 	int height = meta.height;
 	while (height > 1) {
 		internalNode node;
-		map(&node, org);
+		disk_read(&node, org);
 
 		index* i = upper_bound(begin(node), end(node) - 1, key);
 		org = i->child;
@@ -112,7 +109,7 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) const
 {
 	internalNode node;
-	map(&node, index);
+	disk_read(&node, index);
 
 	b_plus_tree::index* i = upper_bound(begin(node), end(node) - 1, key);
 	return i->child;
@@ -121,7 +118,7 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
 {
 	leafNode leaf;
-	map(&leaf, search_leaf(key));
+	disk_read(&leaf, search_leaf(key));
 
 	// finding the record
 	record *record = find(leaf, key);
@@ -148,7 +145,7 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 
 //     leafNode leaf;
 //     while (off != off_right && off != 0 && i < max) {
-//         map(&leaf, off);
+//         disk_read(&leaf, off);
 
 //         // start point
 //         if (off_left == off) 
@@ -166,7 +163,7 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 
 //     // the last leaf
 //     if (i < max) {
-//         map(&leaf, off_right);
+//         disk_read(&leaf, off_right);
 
 //         b = find(leaf, *left);
 //         e = upper_bound(begin(leaf), end(leaf), right);
@@ -192,14 +189,14 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	off_t parent = search_index(key);
 	off_t offset = search_leaf(parent, key);
 	leafNode leaf;
-	map(&leaf, offset);
+	disk_read(&leaf, offset);
 
 	// check if we have the same key
 	record *where = find(leaf, key);
 	if (where != leaf.children + leaf.n) {
 		if (where->key == key) {
 			where->value = value;
-			unmap(&leaf, offset);
+			disk_write(&leaf, offset);
 			return polar_race::kSucc;
 		}
 	}
@@ -230,15 +227,15 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			insert_record_no_split(&leaf, key, value);
 
 		// save leafs
-		unmap(&leaf, offset);
-		unmap(&new_leaf, leaf.next);
+		disk_write(&leaf, offset);
+		disk_write(&new_leaf, leaf.next);
 
 		// insert new index key
 		insert_key_to_index(parent, new_leaf.children[0].key,
 							offset, leaf.next);
 	} else {
 		insert_record_no_split(&leaf, key, value);
-		unmap(&leaf, offset);
+		disk_write(&leaf, offset);
 	}
 
 	return polar_race::kSucc;
@@ -251,7 +248,7 @@ bool bplus_tree::borrow_key(bool from_right, internalNode &borrower,
 
 	off_t lender_off = from_right ? borrower.next : borrower.prev;
 	internalNode lender;
-	map(&lender, lender_off);
+	disk_read(&lender, lender_off);
 
 	assert(lender.n >= meta.order / 2);
 	if (lender.n != meta.order / 2) {
@@ -264,20 +261,20 @@ bool bplus_tree::borrow_key(bool from_right, internalNode &borrower,
 			where_to_lend = begin(lender);
 			where_to_put = end(borrower);
 
-			map(&parent, borrower.parent);
+			disk_read(&parent, borrower.parent);
 			child where = lower_bound(begin(parent), end(parent) - 1,
 										(end(borrower) -1)->key);
 			where->key = where_to_lend->key;
-			unmap(&parent, borrower.parent);
+			disk_write(&parent, borrower.parent);
 		} else {
 			where_to_lend = end(lender) - 1;
 			where_to_put = begin(borrower);
 
-			map(&parent, lender.parent);
+			disk_read(&parent, lender.parent);
 			child where = find(parent, begin(lender)->key);
 			where_to_put->key = where->key;
 			where->key = (where_to_lend - 1)->key;
-			unmap(&parent, lender.parent);
+			disk_write(&parent, lender.parent);
 		}
 
 		// store
@@ -289,7 +286,7 @@ bool bplus_tree::borrow_key(bool from_right, internalNode &borrower,
 		reset_index_children_parent(where_to_lend, where_to_lend + 1, offset);
 		std::copy(where_to_lend + 1, end(lender), where_to_lend);
 		lender.n--;
-		unmap(&lender, lender_off);
+		disk_write(&lender, lender_off);
 		return true;
 	}
 
@@ -300,7 +297,7 @@ bool bplus_tree::borrow_key(bool from_right, leafNode &borrower)
 {
 	off_t lender_off = from_right ? borrower.next : borrower.prev;
 	leafNode lender;
-	map(&lender, lender_off);
+	disk_read(&lender, lender_off);
 
 	assert(lender.n >= meta.order / 2);
 	if (lender.n != meta.order / 2) {
@@ -327,7 +324,7 @@ bool bplus_tree::borrow_key(bool from_right, leafNode &borrower)
 		// erase
 		std::copy(where_to_lend + 1, end(lender), where_to_lend);
 		lender.n--;
-		unmap(&lender, lender_off);
+		disk_write(&lender, lender_off);
 		return true;
 	}
 
@@ -338,13 +335,13 @@ void bplus_tree::change_parent_child(off_t parent, const polar_race::PolarString
 									 const polar_race::PolarString &n)
 {
 	internalNode node;
-	map(&node, parent);
+	disk_read(&node, parent);
 
 	index *w = find(node, o);
 	assert(w != node.children + node.n); 
 
 	w->key = n;
-	unmap(&node, parent);
+	disk_write(&node, parent);
 	if (w == node.children + node.n - 1) {
 		change_parent_child(node.parent, o, n);
 	}
@@ -393,8 +390,8 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		root.children[0].child = old;
 		root.children[1].child = after;
 
-		unmap(&meta, OFFSET_META);
-		unmap(&root, meta.root_offset);
+		disk_write(&meta, OFFSET_META);
+		disk_write(&root, meta.root_offset);
 
 		// update children's parent
 		reset_index_children_parent(begin(root), end(root),
@@ -403,7 +400,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 	}
 
 	internalNode node;
-	map(&node, offset);
+	disk_read(&node, offset);
 	assert(node.n <= meta.order);
 
 	if (node.n == meta.order) {
@@ -436,8 +433,8 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		else
 			insert_key_to_index_no_split(node, key, after);
 
-		unmap(&node, offset);
-		unmap(&new_node, node.next);
+		disk_write(&node, offset);
+		disk_write(&new_node, node.next);
 
 		// update children's parent
 		reset_index_children_parent(begin(new_node), end(new_node), node.next);
@@ -447,7 +444,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		insert_key_to_index(node.parent, middle_key, offset, node.next);
 	} else {
 		insert_key_to_index_no_split(node, key, after);
-		unmap(&node, offset);
+		disk_write(&node, offset);
 	}
 }
 
@@ -476,9 +473,9 @@ void bplus_tree::reset_index_children_parent(index *begin, index *end,
 	// 2. parent field is placed in the beginning and have same size
 	internalNode node;
 	while (begin != end) {
-		map(&node, begin->child);
+		disk_read(&node, begin->child);
 		node.parent = parent;
-		unmap(&node, begin->child, SIZE_NO_CHILDREN);
+		disk_write(&node, begin->child, SIZE_NO_CHILDREN);
 		++begin;
 	}
 }
@@ -494,11 +491,11 @@ void bplus_tree::node_create(off_t offset, T *node, T *next)
 	// update next node's prev
 	if (next->next != 0) {
 		T old_next;
-		map(&old_next, next->next, SIZE_NO_CHILDREN);
+		disk_read(&old_next, next->next, SIZE_NO_CHILDREN);
 		old_next.prev = node->next;
-		unmap(&old_next, next->next, SIZE_NO_CHILDREN);
+		disk_write(&old_next, next->next, SIZE_NO_CHILDREN);
 	}
-	unmap(&meta, OFFSET_META);
+	disk_write(&meta, OFFSET_META);
 }
 
 template<class T>
@@ -508,11 +505,11 @@ void bplus_tree::node_remove(T *prev, T *node)
 	prev->next = node->next;
 	if (node->next != 0) {
 		T next;
-		map(&next, node->next, SIZE_NO_CHILDREN);
+		disk_read(&next, node->next, SIZE_NO_CHILDREN);
 		next.prev = node->prev;
-		unmap(&next, node->next, SIZE_NO_CHILDREN);
+		disk_write(&next, node->next, SIZE_NO_CHILDREN);
 	}
-	unmap(&meta, OFFSET_META);
+	disk_write(&meta, OFFSET_META);
 }
 
 }

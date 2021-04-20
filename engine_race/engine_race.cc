@@ -2,10 +2,9 @@
 #include "engine_race.h"
 
 #include <fcntl.h>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-
-#include <map>
 
 #include "util.h"
 
@@ -29,22 +28,28 @@ RetCode EngineRace::Open(const std::string &name, Engine **eptr) {
 	*eptr = NULL;
 	EngineRace *engine_race = new EngineRace(name);
 
-	if (!FileExists((name + "/" + kDataFile).c_str()) && 0 != mkdir(name.c_str(), 0755)) {
+	printf("sizeof String: %d\n", sizeof(PolarString));
+	printf("sizeof internal: %d\n", sizeof(b_plus_tree::internalNode));
+	printf("sizeof leaf: %d\n", sizeof(b_plus_tree::leafNode));
+
+	// Check dir
+	if (opendir(name.c_str()) == NULL && 0 != mkdir(name.c_str(), 0755)) {
 		return kIOError;
 	}
-	if (!FileExists((name + "/" + kDataFile).c_str())) {
-		int fd = open((name + "/" + kDataFile).c_str(), O_RDWR | O_CREAT, 0644);
-		if (fd < 0) {
-			return kIOError;
-		}
-		close(fd);
-	}
 
-	if (0 != LockFile(name + "/" + kLockFile, &(engine_race->db_lock_))) {
+	// Check data file
+	if (!FileExists(name + "/" + kDataFile) && 0 != DataFile(name + "/" + kDataFile)) {
 		delete engine_race;
 		return kIOError;
 	}
 
+	// Check lock file
+	if (!FileExists(name + "/" + kLockFile) && 0 != LockFile(name + "/" + kLockFile, &(engine_race->db_lock_))) {
+		delete engine_race;
+		return kIOError;
+	}
+
+	// init B+ tree
 	RetCode ret = engine_race->store.init((name + "/" + kDataFile).c_str());
 	if (ret != kSucc) {
 		delete engine_race;
@@ -65,11 +70,6 @@ EngineRace::~EngineRace() {
 RetCode EngineRace::Write(const PolarString& key, const PolarString& value) {
 	pthread_mutex_lock(&mu_);
 	RetCode ret = store.insert_or_update(key, value);
-	// Location location;
-	// RetCode ret = store_.Append(value.ToString(), &location);
-	// if (ret == kSucc) {
-	// 	ret = plate_.AddOrUpdate(key.ToString(), location);
-	// }
 	pthread_mutex_unlock(&mu_);
 	return ret;
 }
@@ -78,12 +78,6 @@ RetCode EngineRace::Write(const PolarString& key, const PolarString& value) {
 RetCode EngineRace::Read(const PolarString& key, std::string* value) {
 	pthread_mutex_lock(&mu_);
 	RetCode ret = store.search(key, value);
-	// Location location;
-	// RetCode ret = plate_.Find(key.ToString(), &location);
-	// if (ret == kSucc) {
-	// 	value->clear();
-	// 	ret = store_.Read(location, value);
-	// }
 	pthread_mutex_unlock(&mu_);
 	return ret;
 }

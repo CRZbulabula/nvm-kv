@@ -72,6 +72,16 @@ bool FileExists(const std::string& path) {
 	return access(path.c_str(), F_OK) == 0;
 }
 
+int DataFile(const std::string& fname) {
+	int fd = open(fname.c_str(), O_RDWR | O_CREAT, 0644);
+	int result = 0;
+	if (fd < 0) {
+		result = errno;
+	}
+	close(fd);
+	return result;
+}
+
 static int LockOrUnlock(int fd, bool lock) {
 	errno = 0;
 	struct flock f;

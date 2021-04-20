@@ -15,13 +15,11 @@ typedef long off_t;
 
 namespace b_plus_tree {
 
-const int childSize = 1024;
+const int childSize = 32;
 
 /* meta data of B+ tree */
 struct metaData{
 	size_t order;
-	size_t value_size; /* size of value */
-	size_t key_size;   /* size of key */
 	size_t internal_node_num; /* how many internal nodes */
 	size_t leaf_node_num;     /* how many leafs */
 	size_t height;            /* height of tree (exclude leafs) */
@@ -78,7 +76,6 @@ class bplus_tree {
 
 	public:
 		bplus_tree(): fp(NULL), fp_level(0) {}
-		//bplus_tree(const char *path, bool force_empty = false);
 
 		/* abstract operations */
 		RetCode search(const polar_race::PolarString& key, std::string *value) const;
@@ -160,7 +157,7 @@ class bplus_tree {
 			return polar_race::kSucc;
 		}
 
-		/* alloc from disk */
+		// alloc from disk
 		off_t alloc(size_t size)
 		{
 			off_t slot = meta.slot;
@@ -192,8 +189,8 @@ class bplus_tree {
 			--meta.internal_node_num;
 		}
 
-		/* read block from disk */
-		int map(void *block, off_t offset, size_t size) const
+		// read block from disk
+		int disk_read(void *block, off_t offset, size_t size) const
 		{
 			open_file();
 			fseek(fp, offset, SEEK_SET);
@@ -204,13 +201,13 @@ class bplus_tree {
 		}
 
 		template<class T>
-		int map(T *block, off_t offset) const
+		int disk_read(T *block, off_t offset) const
 		{
-			return map(block, offset, sizeof(T));
+			return disk_read(block, offset, sizeof(T));
 		}
 
-		/* write block to disk */
-		int unmap(void *block, off_t offset, size_t size) const
+		// write block to disk
+		int disk_write(void *block, off_t offset, size_t size) const
 		{
 			open_file();
 			fseek(fp, offset, SEEK_SET);
@@ -219,10 +216,11 @@ class bplus_tree {
 
 			return wd - 1;
 		}
+
 		template<class T>
-		int unmap(T *block, off_t offset) const
+		int disk_write(T *block, off_t offset) const
 		{
-			return unmap(block, offset, sizeof(T));
+			return disk_write(block, offset, sizeof(T));
 		}
 };
 

@@ -33,6 +33,7 @@ private:
     void operator=(const FileLock&);
 };
 
+int DataFile(const std::string& f);
 int LockFile(const std::string& f, FileLock** l);
 int UnlockFile(FileLock* l);
 
