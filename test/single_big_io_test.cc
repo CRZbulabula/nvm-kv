@@ -15,6 +15,7 @@ char v[9024];
 std::string ks[KV_CNT];
 std::string vs_1[KV_CNT];
 std::string vs_2[KV_CNT];
+std::string vs_3[KV_CNT];
 int main() {
 	Engine *engine = NULL;
 	printf_(
@@ -34,26 +35,32 @@ int main() {
 	for (int i = 0; i < KV_CNT; ++i) {
 		gen_random(k, 16);
 		ks[i] = std::string(k) + std::to_string(i);
-		gen_random(v, 16);
+		gen_random(v, 32);
 		vs_1[i] = v;
-		gen_random(v, 16);
+		vs_3[i] = v;
+		gen_random(v, 32);
 		vs_2[i] = v;
 	}
 
 	printf("gen OK\n");
+	//printf("%s %s\n", vs_1[0].c_str(), vs_3[0].c_str());
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Write(ks[i], vs_1[i]);
+		gen_random(v, 32);
+		vs_1[i] = v;
 		assert(ret == kSucc);
 	}
 	
 	printf("write OK\n");
+	//printf("%s %s\n", vs_1[0].c_str(), vs_3[0].c_str());
 
     std::string value;
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Read(ks[i], &value);
 		assert(ret == kSucc);
-		assert(value == vs_1[i]);
+		//printf("%s %s\n", vs_1[i].c_str(), vs_3[i].c_str());
+		assert(value == vs_3[i]);
 	}
 	
     printf("read OK\n");
@@ -72,7 +79,7 @@ int main() {
 		if (i % 2 == 0) {
 			assert(value == vs_2[i]);
 		} else {
-			assert(value == vs_1[i]);
+			assert(value == vs_3[i]);
 		}
 	}
 
