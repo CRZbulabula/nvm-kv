@@ -58,7 +58,7 @@ RetCode bplus_tree::init(const char *p)
 		leafNode leaf;
 		leaf.next = leaf.prev = 0;
 		leaf.parent = meta.root_offset;
-		root.children[0].child = alloc(&leaf);
+		meta.leaf_offset = root.children[0].child = alloc(&leaf);
 
 		// save
 		disk_write(&meta, OFFSET_META);

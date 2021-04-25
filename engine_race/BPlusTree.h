@@ -26,6 +26,7 @@ struct metaData{
 	size_t height;            // height of tree (exclude leafs)
 	off_t slot;        // where to store new block
 	off_t root_offset; // where is the root of internal nodes
+	off_t leaf_offset; // where is the first leaf nodes
 };
 
 /* internal nodes' index segment */
@@ -241,8 +242,10 @@ class bplus_tree {
 			internalNode node, nxtInternal;
 			leafNode nxtLeafNode;
 			disk_read(&node, org);
+			printf("internalCnt: %lld leafCnt: %lld\n", meta.internal_node_num, meta.leaf_node_num);
 			while (height > 0) {
 				disk_read(&nxtInternal, node.children[0].child);
+				printf("--------------------------------\n");
 				printf("height: %d\n", height);
 				while (true) {
 					node_printf(&node);
@@ -254,8 +257,9 @@ class bplus_tree {
 				node = nxtInternal;
 				--height;
 			}
-			disk_read(&nxtLeafNode, node.children[0].child);
-			printf("height: %d\n", height);
+			disk_read(&nxtLeafNode, meta.leaf_offset);
+			printf("--------------------------------\n");
+			printf("leaf nodes:\n");
 			while (true) {
 				node_printf(&nxtLeafNode);
 				if (nxtLeafNode.next == 0) {
