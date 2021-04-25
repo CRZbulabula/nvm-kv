@@ -15,6 +15,8 @@
 using namespace polar_race;
 
 #define KV_CNT 30000
+#define KEY_SIZE 8
+#define VALUE_SIZE 16
 
 char k[1024];
 char v[9024];
@@ -39,9 +41,9 @@ int main() {
     printf("open engine_path: %s\n", engine_path.c_str());
 
     for (int i = 0; i < KV_CNT; ++i) {
-        gen_random(k, 13);
-        ks[i] = std::string(k) + std::to_string(i);
-        gen_random(v, 677);
+        gen_marked_random(k, std::to_string(i) + "-", KEY_SIZE);
+        ks[i] = std::string(k);
+        gen_random(v, VALUE_SIZE);
         vs[i] = v;
     }
 

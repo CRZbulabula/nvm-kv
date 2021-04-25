@@ -8,7 +8,7 @@
 
 using namespace polar_race;
 
-#define KV_CNT 100
+#define KV_CNT 10000
 
 char k[8192];
 char v[9024];
@@ -96,7 +96,7 @@ int main() {
 		if (i % 2 == 0) {
 			assert(value == vs_2[i]);
 		} else {
-			assert(value == vs_1[i]);
+			assert(value == vs_3[i]);
 		}
 	}
 

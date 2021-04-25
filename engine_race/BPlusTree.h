@@ -25,8 +25,8 @@ struct metaData{
 	size_t leaf_node_num;     // how many leafs
 	size_t height;            // height of tree (exclude leafs)
 	off_t slot;        // where to store new block
-	off_t root_offset; // where is the root of internal nodes
-	off_t leaf_offset; // where is the first leaf nodes
+	off_t root_offset; // where is the root of internal node
+	off_t leaf_offset; // where is the last leaf node
 };
 
 /* internal nodes' index segment */
@@ -110,9 +110,6 @@ class bplus_tree {
 			return search_leaf(search_index(key), key);
 		}
 
-		/* change one's parent key to another key */
-		void change_parent_child(off_t parent, const polar_race::PolarString &o, const polar_race::PolarString &n);
-
 		/* insert into leaf without split */
 		void insert_record_no_split(leafNode *leaf,
 								const polar_race::PolarString &key, const polar_race::PolarString &value);
@@ -128,7 +125,7 @@ class bplus_tree {
 										off_t parent);
 
 		template<class T>
-		void node_create(off_t offset, T *node, T *next);
+		void node_create(off_t offset, T *node, T *prev);
 	
 		mutable FILE *fp;
 		mutable int fp_level;
@@ -262,10 +259,10 @@ class bplus_tree {
 			printf("leaf nodes:\n");
 			while (true) {
 				node_printf(&nxtLeafNode);
-				if (nxtLeafNode.next == 0) {
+				if (nxtLeafNode.prev == 0) {
 					break;
 				}
-				disk_read(&nxtLeafNode, nxtLeafNode.next);
+				disk_read(&nxtLeafNode, nxtLeafNode.prev);
 			}
 		}
 };
