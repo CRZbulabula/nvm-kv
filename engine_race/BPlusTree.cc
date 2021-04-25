@@ -33,26 +33,6 @@ inline record *find(leafNode &node, const polar_race::PolarString &key) {
 	return lower_bound(begin(node), end(node), key);
 }
 
-// bplus_tree::bplus_tree(const char *p, bool force_empty)
-// 	: fp(NULL), fp_level(0)
-// {
-// 	bzero(path, sizeof(path));
-// 	strcpy(path, p);
-
-// 	if (!force_empty)
-// 		// read tree from file
-// 		if (disk_read(&meta, OFFSET_META) != 0)
-// 			force_empty = true;
-
-// 	if (force_empty) {
-// 		//open_file("w+"); // truncate file
-
-// 		// create empty tree if file doesn't exist
-// 		init();
-// 		//close_file();
-// 	}
-// }
-
 RetCode bplus_tree::init(const char *p)
 {
 	bzero(path, sizeof(path));
@@ -78,7 +58,7 @@ RetCode bplus_tree::init(const char *p)
 		leafNode leaf;
 		leaf.next = leaf.prev = 0;
 		leaf.parent = meta.root_offset;
-		meta.leaf_offset = root.children[0].child = alloc(&leaf);
+		root.children[0].child = alloc(&leaf);
 
 		// save
 		disk_write(&meta, OFFSET_META);
@@ -97,8 +77,10 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 	while (height > 1) {
 		internalNode node;
 		disk_read(&node, org);
-
+		printf("internalNode: ");
+		node_printf(&node);
 		index* i = upper_bound(begin(node), end(node) - 1, key);
+		printf("pos: %d\n", upper_bound(begin(node), end(node) - 1, key) - begin(node));
 		org = i->child;
 		--height;
 	}
@@ -110,21 +92,31 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 {
 	internalNode node;
 	disk_read(&node, index);
-
+	printf("internalNode: ");
+	node_printf(&node);
 	b_plus_tree::index* i = upper_bound(begin(node), end(node) - 1, key);
+	printf("pos: %d\n", upper_bound(begin(node), end(node) - 1, key) - begin(node));
 	return i->child;
 }
 
 RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
 {
+	tree_printf();
+	puts("");
 	leafNode leaf;
 	disk_read(&leaf, search_leaf(key));
 
 	// finding the record
+	printf("leafNode: ");
+	node_printf(&leaf);
 	record *record = find(leaf, key);
 	if (record != leaf.children + leaf.n) {
 		// always return the lower bound
-		*value = record->value.data();
+		printf("%s %s\n\n", key.data(), record->key);
+		char *valueBlock = new char[record->valueSize + 1];
+		bzero(valueBlock, record->valueSize + 1);
+		disk_read(valueBlock, record->valueOff, record->valueSize);
+		*value = valueBlock;
 		return record->key == key ? polar_race::kSucc : polar_race::kNotFound;
 	} else {
 		return polar_race::kNotFound;
@@ -195,7 +187,10 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	record *where = find(leaf, key);
 	if (where != leaf.children + leaf.n) {
 		if (where->key == key) {
-			where->value = value;
+			// rewrite the value
+			where->valueSize = value.size();
+			where->valueOff = alloc(value.size());
+			disk_write(value.data(), where->valueOff, where->valueSize);
 			disk_write(&leaf, offset);
 			return polar_race::kSucc;
 		}
@@ -241,96 +236,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	return polar_race::kSucc;
 }
 
-bool bplus_tree::borrow_key(bool from_right, internalNode &borrower,
-							off_t offset)
-{
-	typedef typename internalNode::child child;
-
-	off_t lender_off = from_right ? borrower.next : borrower.prev;
-	internalNode lender;
-	disk_read(&lender, lender_off);
-
-	assert(lender.n >= meta.order / 2);
-	if (lender.n != meta.order / 2) {
-		child where_to_lend, where_to_put;
-
-		internalNode parent;
-
-		// swap keys, draw on paper to see why
-		if (from_right) {
-			where_to_lend = begin(lender);
-			where_to_put = end(borrower);
-
-			disk_read(&parent, borrower.parent);
-			child where = lower_bound(begin(parent), end(parent) - 1,
-										(end(borrower) -1)->key);
-			where->key = where_to_lend->key;
-			disk_write(&parent, borrower.parent);
-		} else {
-			where_to_lend = end(lender) - 1;
-			where_to_put = begin(borrower);
-
-			disk_read(&parent, lender.parent);
-			child where = find(parent, begin(lender)->key);
-			where_to_put->key = where->key;
-			where->key = (where_to_lend - 1)->key;
-			disk_write(&parent, lender.parent);
-		}
-
-		// store
-		std::copy_backward(where_to_put, end(borrower), end(borrower) + 1);
-		*where_to_put = *where_to_lend;
-		borrower.n++;
-
-		// erase
-		reset_index_children_parent(where_to_lend, where_to_lend + 1, offset);
-		std::copy(where_to_lend + 1, end(lender), where_to_lend);
-		lender.n--;
-		disk_write(&lender, lender_off);
-		return true;
-	}
-
-	return false;
-}
-
-bool bplus_tree::borrow_key(bool from_right, leafNode &borrower)
-{
-	off_t lender_off = from_right ? borrower.next : borrower.prev;
-	leafNode lender;
-	disk_read(&lender, lender_off);
-
-	assert(lender.n >= meta.order / 2);
-	if (lender.n != meta.order / 2) {
-		typename leafNode::child where_to_lend, where_to_put;
-
-		// decide offset and update parent's index key
-		if (from_right) {
-			where_to_lend = begin(lender);
-			where_to_put = end(borrower);
-			change_parent_child(borrower.parent, begin(borrower)->key,
-								lender.children[1].key);
-		} else {
-			where_to_lend = end(lender) - 1;
-			where_to_put = begin(borrower);
-			change_parent_child(lender.parent, begin(lender)->key,
-								where_to_lend->key);
-		}
-
-		// store
-		std::copy_backward(where_to_put, end(borrower), end(borrower) + 1);
-		*where_to_put = *where_to_lend;
-		borrower.n++;
-
-		// erase
-		std::copy(where_to_lend + 1, end(lender), where_to_lend);
-		lender.n--;
-		disk_write(&lender, lender_off);
-		return true;
-	}
-
-	return false;
-}
-
 void bplus_tree::change_parent_child(off_t parent, const polar_race::PolarString &o,
 									 const polar_race::PolarString &n)
 {
@@ -340,27 +245,11 @@ void bplus_tree::change_parent_child(off_t parent, const polar_race::PolarString
 	index *w = find(node, o);
 	assert(w != node.children + node.n); 
 
-	w->key = n;
+	strcpy(w->key, n.data());
 	disk_write(&node, parent);
 	if (w == node.children + node.n - 1) {
 		change_parent_child(node.parent, o, n);
 	}
-}
-
-void bplus_tree::merge_leafs(leafNode *left, leafNode *right)
-{
-	std::copy(begin(*right), end(*right), end(*left));
-	left->n += right->n;
-}
-
-void bplus_tree::merge_keys(index *where,
-							internalNode &node, internalNode &next)
-{
-	//(end(node) - 1)->key = where->key;
-	//where->key = (end(next) - 1)->key;
-	std::copy(begin(next), end(next), end(node));
-	node.n += next.n;
-	node_remove(&node, &next);
 }
 
 void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarString &key, 
@@ -369,8 +258,10 @@ void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarS
 	record *where = upper_bound(begin(*leaf), end(*leaf), key);
 	std::copy_backward(where, end(*leaf), end(*leaf) + 1);
 
-	where->key = key;
-	where->value = value;
+	strcpy(where->key, key.data());
+	where->valueSize = value.size();
+	where->valueOff = alloc(where->valueSize);
+	disk_write(value.data(), where->valueOff, where->valueSize);
 	leaf->n++;
 }
 
@@ -386,7 +277,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 
 		// insert `old` and `after`
 		root.n = 2;
-		root.children[0].key = key;
+		strcpy(root.children[0].key, key.data());
 		root.children[0].child = old;
 		root.children[1].child = after;
 
@@ -457,7 +348,7 @@ void bplus_tree::insert_key_to_index_no_split(internalNode &node,
 	std::copy_backward(where, end(node), end(node) + 1);
 
 	// insert this key
-	where->key = key;
+	strcpy(where->key, key.data());
 	where->child = (where + 1)->child;
 	(where + 1)->child = value;
 
@@ -494,20 +385,6 @@ void bplus_tree::node_create(off_t offset, T *node, T *next)
 		disk_read(&old_next, next->next, SIZE_NO_CHILDREN);
 		old_next.prev = node->next;
 		disk_write(&old_next, next->next, SIZE_NO_CHILDREN);
-	}
-	disk_write(&meta, OFFSET_META);
-}
-
-template<class T>
-void bplus_tree::node_remove(T *prev, T *node)
-{
-	unalloc(node, prev->next);
-	prev->next = node->next;
-	if (node->next != 0) {
-		T next;
-		disk_read(&next, node->next, SIZE_NO_CHILDREN);
-		next.prev = node->prev;
-		disk_write(&next, node->next, SIZE_NO_CHILDREN);
 	}
 	disk_write(&meta, OFFSET_META);
 }
