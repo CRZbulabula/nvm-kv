@@ -33,6 +33,37 @@ inline record *find(leafNode &node, const polar_race::PolarString &key) {
 	return lower_bound(begin(node), end(node), key);
 }
 
+//锁操作相关函数
+inline void bplus_node_rlock(internalNode *bn)
+{
+  latch_rlock(bn->lock);
+}
+
+inline void bplus_node_wlock(internalNode *bn)
+{
+  latch_wlock(bn->lock);
+}
+
+inline void bplus_node_unlock(internalNode *bn)
+{
+  latch_unlock(bn->lock);
+}
+
+inline void bplus_node_rlock(leafNode *bn)
+{
+  latch_rlock(bn->lock);
+}
+
+inline void bplus_node_wlock(leafNode *bn)
+{
+  latch_wlock(bn->lock);
+}
+
+inline void bplus_node_unlock(leafNode *bn)
+{
+  latch_unlock(bn->lock);
+}
+
 // bplus_tree::bplus_tree(const char *p, bool force_empty)
 // 	: fp(NULL), fp_level(0)
 // {
@@ -71,11 +102,13 @@ RetCode bplus_tree::init(const char *p)
 
 		// init root node
 		internalNode root;
+		latch_init(root.lock);
 		root.next = root.prev = root.parent = 0;
 		meta.root_offset = alloc(&root);
 
 		// init empty leaf
 		leafNode leaf;
+		latch_init(leaf.lock);
 		leaf.next = leaf.prev = 0;
 		leaf.parent = meta.root_offset;
 		meta.leaf_offset = root.children[0].child = alloc(&leaf);
@@ -97,12 +130,14 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 	while (height > 1) {
 		internalNode node;
 		disk_read(&node, org);
-
+		bplus_node_rlock(&node);
+		disk_write(&node,org);
 		index* i = upper_bound(begin(node), end(node) - 1, key);
 		org = i->child;
 		--height;
+		bplus_node_unlock(&node);
+		disk_write(&node,org);
 	}
-
 	return org;
 }
 
@@ -110,7 +145,8 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 {
 	internalNode node;
 	disk_read(&node, index);
-
+	bplus_node_rlock(&node);
+	disk_write(&node,index);
 	b_plus_tree::index* i = upper_bound(begin(node), end(node) - 1, key);
 	return i->child;
 }
@@ -119,12 +155,15 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 {
 	leafNode leaf;
 	disk_read(&leaf, search_leaf(key));
-
 	// finding the record
 	record *record = find(leaf, key);
 	if (record != leaf.children + leaf.n) {
 		// always return the lower bound
+		bplus_node_rlock(&leaf);
+		disk_write(&leaf,search_leaf(key));
 		*value = record->value.data();
+		bplus_node_unlock(&leaf);
+		disk_write(&leaf,search_leaf(key));
 		return record->key == key ? polar_race::kSucc : polar_race::kNotFound;
 	} else {
 		return polar_race::kNotFound;
@@ -190,12 +229,14 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	off_t offset = search_leaf(parent, key);
 	leafNode leaf;
 	disk_read(&leaf, offset);
-
+	bplus_node_wlock(&leaf);
+	disk_write(&leaf,offset);
 	// check if we have the same key
 	record *where = find(leaf, key);
 	if (where != leaf.children + leaf.n) {
 		if (where->key == key) {
 			where->value = value;
+			bplus_node_unlock(&leaf);
 			disk_write(&leaf, offset);
 			return polar_race::kSucc;
 		}
@@ -206,6 +247,7 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 
 		// new sibling leaf
 		leafNode new_leaf;
+		latch_init(new_leaf.lock);
 		node_create(offset, &leaf, &new_leaf);
 
 		// find even split point
@@ -227,7 +269,9 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			insert_record_no_split(&leaf, key, value);
 
 		// save leafs
+		bplus_node_unlock(&leaf);
 		disk_write(&leaf, offset);
+		
 		disk_write(&new_leaf, leaf.next);
 
 		// insert new index key
@@ -235,6 +279,7 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 							offset, leaf.next);
 	} else {
 		insert_record_no_split(&leaf, key, value);
+		bplus_node_unlock(&leaf);
 		disk_write(&leaf, offset);
 	}
 
@@ -380,6 +425,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 	if (offset == 0) {
 		// create new root node
 		internalNode root;
+		latch_init(root.lock);
 		root.next = root.prev = root.parent = 0;
 		meta.root_offset = alloc(&root);
 		meta.height++;
@@ -407,6 +453,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		// split when full
 
 		internalNode new_node;
+		latch_init(new_node.lock);
 		node_create(offset, &node, &new_node);
 
 		// find even split point
@@ -433,6 +480,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		else
 			insert_key_to_index_no_split(node, key, after);
 
+		bplus_node_unlock(&node);
 		disk_write(&node, offset);
 		disk_write(&new_node, node.next);
 
@@ -441,9 +489,13 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 
 		// give the middle key to the parent
 		// note: middle key's child is reserved
+		internalNode parent_node;
+		disk_read(&parent_node,node.parent);
+		bplus_node_wlock(&parent_node);
 		insert_key_to_index(node.parent, middle_key, offset, node.next);
 	} else {
 		insert_key_to_index_no_split(node, key, after);
+		bplus_node_unlock(&node);
 		disk_write(&node, offset);
 	}
 }
@@ -474,7 +526,9 @@ void bplus_tree::reset_index_children_parent(index *begin, index *end,
 	internalNode node;
 	while (begin != end) {
 		disk_read(&node, begin->child);
+		bplus_node_rlock(&node);
 		node.parent = parent;
+		bplus_node_unlock(&node);
 		disk_write(&node, begin->child, SIZE_NO_CHILDREN);
 		++begin;
 	}

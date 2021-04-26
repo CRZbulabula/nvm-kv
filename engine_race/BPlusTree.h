@@ -9,6 +9,8 @@
 #include "include/polar_string.h"
 #include "include/engine.h"
 
+#include "latch.h" //引用锁的头文件
+
 using polar_race::RetCode;
 
 typedef long off_t;
@@ -45,6 +47,8 @@ struct internalNode {
 	off_t prev;
 	size_t n; /* how many children */
 	index children[childSize];
+
+	latch lock[1];//锁变量
 };
 
 /* the final record of value */
@@ -62,7 +66,17 @@ struct leafNode {
 	off_t prev;
 	size_t n;
 	record children[childSize];
+
+	latch lock[1];//锁变量
 };
+
+//锁函数声明
+void bplus_node_rlock(internalNode *bn);
+void bplus_node_wlock(internalNode *bn);
+void bplus_node_unlock(internalNode *bn);
+void bplus_node_rlock(leafNode *bn);
+void bplus_node_wlock(leafNode *bn);
+void bplus_node_unlock(leafNode *bn);
 
 const int OFFSET_META = 0;
 const int OFFSET_BLOCK = sizeof(metaData);
