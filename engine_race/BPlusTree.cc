@@ -132,6 +132,8 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 
 RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
 {
+	printf("search key: %s\n", key.data());
+	tree_printf();
 	leafNode leaf;
 	disk_read(&leaf, search_leaf(key));
 	// finding the record
@@ -146,6 +148,7 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 		*value = valueBlock;
 		bplus_node_unlock(&leaf);
 		disk_write(&leaf,search_leaf(key));
+		printf("%s %s\n", record->key, key.data());
 		return record->key == key ? polar_race::kSucc : polar_race::kNotFound;
 	} else {
 		return polar_race::kNotFound;
@@ -267,6 +270,7 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 		disk_write(&leaf, offset);
 	}
 
+	tree_printf();
 	return polar_race::kSucc;
 }
 
