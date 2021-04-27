@@ -253,6 +253,7 @@ class bplus_tree {
 			internalNode node, nxtInternal;
 			leafNode nxtLeafNode;
 			disk_read(&node, org);
+			printf("\n--------------------------------\n");
 			printf("internalCnt: %lld leafCnt: %lld\n", meta.internal_node_num, meta.leaf_node_num);
 			while (height > 0) {
 				disk_read(&nxtInternal, node.children[0].child);
@@ -278,6 +279,7 @@ class bplus_tree {
 				}
 				disk_read(&nxtLeafNode, nxtLeafNode.prev);
 			}
+			printf("--------------------------------\n");
 		}
 };
 
