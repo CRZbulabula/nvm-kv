@@ -8,7 +8,7 @@
 
 using namespace polar_race;
 
-#define KV_CNT 100000
+#define KV_CNT 10000
 
 char k[8192];
 char v[9024];
@@ -35,10 +35,10 @@ int main() {
 	for (int i = 0; i < KV_CNT; ++i) {
 		gen_random(k, 16);
 		ks[i] = std::string(k) + std::to_string(i);
-		gen_random(v, 32);
+		gen_random(v, 16);
 		vs_1[i] = v;
 		vs_3[i] = v;
-		gen_random(v, 32);
+		gen_random(v, 16);
 		vs_2[i] = v;
 	}
 
@@ -47,7 +47,7 @@ int main() {
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Write(ks[i], vs_1[i]);
-		gen_random(v, 32);
+		gen_random(v, 16);
 		vs_1[i] = v;
 		assert(ret == kSucc);
 	}
@@ -59,7 +59,6 @@ int main() {
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Read(ks[i], &value);
 		assert(ret == kSucc);
-		//printf("%s %s\n", vs_1[i].c_str(), vs_3[i].c_str());
 		assert(value == vs_3[i]);
 	}
 	
@@ -97,7 +96,7 @@ int main() {
 		if (i % 2 == 0) {
 			assert(value == vs_2[i]);
 		} else {
-			assert(value == vs_1[i]);
+			assert(value == vs_3[i]);
 		}
 	}
 

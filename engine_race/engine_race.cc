@@ -28,7 +28,6 @@ RetCode EngineRace::Open(const std::string &name, Engine **eptr) {
 	*eptr = NULL;
 	EngineRace *engine_race = new EngineRace(name);
 
-	printf("sizeof String: %d\n", sizeof(PolarString));
 	printf("sizeof internal: %d\n", sizeof(b_plus_tree::internalNode));
 	printf("sizeof leaf: %d\n", sizeof(b_plus_tree::leafNode));
 
