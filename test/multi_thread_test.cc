@@ -10,8 +10,6 @@
 using namespace polar_race;
 
 #define KV_CNT 1000
-#define KEY_SIZE 16
-#define VALUE_SIZE 16
 #define THREAD_NUM 4
 #define CONFLICT_KEY 50
 
@@ -62,11 +60,11 @@ int main() {
 
     for (int t = 0; t < THREAD_NUM; ++t) {
         for (int i = 0; i < KV_CNT; ++i) {
-            gen_marked_random(k, std::to_string(t) + "-" + std::to_string(i) + "-",
-                              KEY_SIZE);
-            ks[t][i] = std::string(k);
+            gen_random(k, 6);
+            ks[t][i] =
+                std::to_string(t) + "th" + std::string(k) + std::to_string(i);
 
-            gen_random(v, VALUE_SIZE);
+            gen_random(v, 1027);
             vs[t][i] = v;
         }
     }
