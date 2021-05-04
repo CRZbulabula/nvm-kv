@@ -10,6 +10,7 @@
 #include "include/engine.h"
 
 #include "latch.h" //引用锁的头文件
+#include <vector>
 
 using polar_race::RetCode;
 
@@ -22,12 +23,23 @@ const int childSize = 32;
 /* meta data of B+ tree */
 struct metaData{
 	size_t order;
+<<<<<<< Updated upstream
 	size_t internal_node_num; /* how many internal nodes */
 	size_t leaf_node_num;     /* how many leafs */
 	size_t height;            /* height of tree (exclude leafs) */
 	off_t slot;        /* where to store new block */
 	off_t root_offset; /* where is the root of internal nodes */
 	off_t leaf_offset; /* where is the first leaf */
+=======
+	size_t internal_node_num; // how many internal nodes
+	size_t leaf_node_num;     // how many leafs
+	size_t height;            // height of tree (exclude leafs)
+	off_t slot;        // where to store new block
+	off_t root_offset; // where is the root of internal node
+	off_t leaf_offset; // where is the last leaf node
+
+	int number;
+>>>>>>> Stashed changes
 };
 
 /* internal nodes' index segment */
@@ -48,13 +60,28 @@ struct internalNode {
 	size_t n; /* how many children */
 	index children[childSize];
 
-	latch lock[1];//锁变量
+	int id;
+	int status = 0;
 };
 
+<<<<<<< Updated upstream
 /* the final record of value */
 struct record {
 	polar_race::PolarString key;
 	polar_race::PolarString value;
+=======
+/* the record of value */
+class record {
+	public:
+		char key[maxKeyLength];
+		off_t valueOff;
+		size_t valueSize;
+
+		record() {
+			bzero(key, maxKeyLength);
+		}
+	
+>>>>>>> Stashed changes
 };
 
 /* leaf node block */
@@ -67,16 +94,15 @@ struct leafNode {
 	size_t n;
 	record children[childSize];
 
-	latch lock[1];//锁变量
+	int id;
+	int status = 0;
 };
 
 //锁函数声明
-void bplus_node_rlock(internalNode *bn);
-void bplus_node_wlock(internalNode *bn);
-void bplus_node_unlock(internalNode *bn);
-void bplus_node_rlock(leafNode *bn);
-void bplus_node_wlock(leafNode *bn);
-void bplus_node_unlock(leafNode *bn);
+void bplus_node_rlock(latch* lock);
+void bplus_node_wlock(latch* lock);
+void bplus_node_unlock(latch* lock);
+
 
 const int OFFSET_META = 0;
 const int OFFSET_BLOCK = sizeof(metaData);
@@ -87,9 +113,18 @@ class bplus_tree {
 	private:
 		metaData meta;
 		char path[512];
+		std::vector<latch*> latchpool;
+		//int number = 0;
 
 	public:
-		bplus_tree(): fp(NULL), fp_level(0) {}
+		bplus_tree(): fp(NULL), fp_level(0) {
+			for(int i = 0; i < meta.number; i++)
+				{
+					latch* latch_insert = new latch;
+					latch_init(latch_insert);
+					latchpool.push_back(latch_insert);
+				}
+		}
 
 		/* abstract operations */
 		RetCode search(const polar_race::PolarString& key, std::string *value) const;
@@ -236,6 +271,56 @@ class bplus_tree {
 		{
 			return disk_write(block, offset, sizeof(T));
 		}
+<<<<<<< Updated upstream
+=======
+
+		// debug print
+		template<class T>
+		void node_printf(const T *node) const {
+			printf("node size: %d\n", node->n);
+			printf("node status:%d\n",node->status);
+			printf("node id:%d\n",node->id);
+			for (int i = 0; i < node->n; i++) {
+				printf("%s%c", node->children[i].key, i == node->n - 1 ? '\n' : ' ');
+			}
+		}
+
+		void tree_printf() const {
+			off_t org = meta.root_offset;
+			int height = meta.height;
+			internalNode node, nxtInternal;
+			leafNode nxtLeafNode;
+			disk_read(&node, org);
+			printf("\n--------------------------------\n");
+			printf("internalCnt: %lld leafCnt: %lld\n", meta.internal_node_num, meta.leaf_node_num);
+			//printf("thread id=%lu\n", pthread_self());
+			while (height > 0) {
+				disk_read(&nxtInternal, node.children[0].child);
+				printf("--------------------------------\n");
+				printf("height: %d\n", height);
+				while (true) {
+					node_printf(&node);
+					if (node.next == 0) {
+						break;
+					}
+					disk_read(&node, node.next);
+				}
+				node = nxtInternal;
+				--height;
+			}
+			disk_read(&nxtLeafNode, meta.leaf_offset);
+			printf("--------------------------------\n");
+			printf("leaf nodes:\n");
+			while (true) {
+				node_printf(&nxtLeafNode);
+				if (nxtLeafNode.prev == 0) {
+					break;
+				}
+				disk_read(&nxtLeafNode, nxtLeafNode.prev);
+			}
+			printf("--------------------------------\n");
+		}
+>>>>>>> Stashed changes
 };
 
 inline bool operator<(const record& x, const polar_race::PolarString& y) {
