@@ -7,13 +7,8 @@
 using std::swap;
 using std::binary_search;
 using std::lower_bound;
-using std::upper_bound;
 
 namespace b_plus_tree {
-
-/* custom compare operator for STL algorithms */
-// OPERATOR_KEYCMP(index)
-// OPERATOR_KEYCMP(record)
 
 /* helper iterating function */
 template<class T>
@@ -26,42 +21,9 @@ inline typename T::child end(T &node) {
 }
 
 /* helper searching function */
-inline index *find(internalNode &node, const polar_race::PolarString &key) {
-	return upper_bound(begin(node), end(node) - 1, key);
-}
-inline record *find(leafNode &node, const polar_race::PolarString &key) {
+template<class T>
+inline record *find(T &node, const polar_race::PolarString &key) {
 	return lower_bound(begin(node), end(node), key);
-}
-
-//锁操作相关函数
-inline void bplus_node_rlock(internalNode *bn)
-{
-  latch_rlock(bn->lock);
-}
-
-inline void bplus_node_wlock(internalNode *bn)
-{
-  latch_wlock(bn->lock);
-}
-
-inline void bplus_node_unlock(internalNode *bn)
-{
-  latch_unlock(bn->lock);
-}
-
-inline void bplus_node_rlock(leafNode *bn)
-{
-  latch_rlock(bn->lock);
-}
-
-inline void bplus_node_wlock(leafNode *bn)
-{
-  latch_wlock(bn->lock);
-}
-
-inline void bplus_node_unlock(leafNode *bn)
-{
-  latch_unlock(bn->lock);
 }
 
 RetCode bplus_tree::init(const char *p)
@@ -82,16 +44,22 @@ RetCode bplus_tree::init(const char *p)
 
 		// init root node
 		internalNode root;
-		latch_init(root.lock);
+		root.id = meta.number++;
 		root.next = root.prev = root.parent = 0;
 		meta.root_offset = alloc(&root);
 
 		// init empty leaf
 		leafNode leaf;
-		latch_init(leaf.lock);
+		leaf.id = meta.number++;
 		leaf.next = leaf.prev = 0;
 		leaf.parent = meta.root_offset;
 		meta.leaf_offset = root.children[0].child = alloc(&leaf);
+		leaf.n = 1;
+
+		// set lastChar
+		char maxChar[1] = {(char)127};
+		strcpy(root.children[0].key, maxChar);
+		strcpy(leaf.children[0].key, maxChar);
 
 		// save
 		disk_write(&meta, OFFSET_META);
@@ -110,21 +78,11 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 	while (height > 1) {
 		internalNode node;
 		disk_read(&node, org);
-<<<<<<< HEAD
-		bplus_node_rlock(&node);
-		disk_write(&node,org);
 		index* i = lower_bound(begin(node), end(node), key);
-=======
-		printf("internalNode: ");
-		node_printf(&node);
-		index* i = upper_bound(begin(node), end(node) - 1, key);
-		printf("pos: %d\n", upper_bound(begin(node), end(node) - 1, key) - begin(node));
->>>>>>> parent of 28316a4 (测试通过)
 		org = i->child;
 		--height;
-		bplus_node_unlock(&node);
-		disk_write(&node,org);
 	}
+
 	return org;
 }
 
@@ -132,43 +90,26 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 {
 	internalNode node;
 	disk_read(&node, index);
-<<<<<<< HEAD
-	bplus_node_rlock(&node);
-	disk_write(&node,index);
 	b_plus_tree::index* i = lower_bound(begin(node), end(node), key);
-=======
-	printf("internalNode: ");
-	node_printf(&node);
-	b_plus_tree::index* i = upper_bound(begin(node), end(node) - 1, key);
-	printf("pos: %d\n", upper_bound(begin(node), end(node) - 1, key) - begin(node));
->>>>>>> parent of 28316a4 (测试通过)
 	return i->child;
 }
 
 RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
 {
-	tree_printf();
-	puts("");
 	leafNode leaf;
 	disk_read(&leaf, search_leaf(key));
+
 	// finding the record
-	printf("leafNode: ");
-	node_printf(&leaf);
 	record *record = find(leaf, key);
 	if (record != leaf.children + leaf.n) {
 		// always return the lower bound
-<<<<<<< HEAD
-		bplus_node_rlock(&leaf);
-		disk_write(&leaf,search_leaf(key));
-=======
-		printf("%s %s\n\n", key.data(), record->key);
->>>>>>> parent of 28316a4 (测试通过)
+		if (record->key != key) {
+			return polar_race::kNotFound;
+		}
 		char *valueBlock = new char[record->valueSize + 1];
 		bzero(valueBlock, record->valueSize + 1);
 		disk_read(valueBlock, record->valueOff, record->valueSize);
 		*value = valueBlock;
-		bplus_node_unlock(&leaf);
-		disk_write(&leaf,search_leaf(key));
 		return record->key == key ? polar_race::kSucc : polar_race::kNotFound;
 	} else {
 		return polar_race::kNotFound;
@@ -230,12 +171,12 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 
 RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value)
 {
+	//tree_printf();
 	off_t parent = search_index(key);
 	off_t offset = search_leaf(parent, key);
 	leafNode leaf;
 	disk_read(&leaf, offset);
-	bplus_node_wlock(&leaf);
-	disk_write(&leaf,offset);
+
 	// check if we have the same key
 	record *where = find(leaf, key);
 	if (where != leaf.children + leaf.n) {
@@ -244,7 +185,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			where->valueSize = value.size();
 			where->valueOff = alloc(value.size());
 			disk_write(value.data(), where->valueOff, where->valueSize);
-			bplus_node_unlock(&leaf);
 			disk_write(&leaf, offset);
 			return polar_race::kSucc;
 		}
@@ -255,7 +195,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 
 		// new sibling leaf
 		leafNode new_leaf;
-		latch_init(new_leaf.lock);
 		node_create(offset, &leaf, &new_leaf);
 
 		// find even split point
@@ -265,54 +204,36 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			++point;
 
 		// split
-		std::copy(leaf.children + point, leaf.children + leaf.n,
-				  new_leaf.children);
-		new_leaf.n = leaf.n - point;
-		leaf.n = point;
+		std::copy(begin(leaf), begin(leaf) + point, begin(new_leaf));
+		std::copy(begin(leaf) + point, end(leaf), begin(leaf));
+		new_leaf.n = point;
+		leaf.n = leaf.n - point;
 
 		// which part do we put the key
 		if (place_right)
-			insert_record_no_split(&new_leaf, key, value);
-		else
 			insert_record_no_split(&leaf, key, value);
+		else
+			insert_record_no_split(&new_leaf, key, value);
 
 		// save leafs
-		bplus_node_unlock(&leaf);
 		disk_write(&leaf, offset);
-		disk_write(&new_leaf, leaf.next);
+		disk_write(&new_leaf, leaf.prev);
 
 		// insert new index key
-		insert_key_to_index(parent, new_leaf.children[0].key,
-							offset, leaf.next);
+		insert_key_to_index(parent, new_leaf.children[new_leaf.n - 1].key,
+							offset, leaf.prev);
 	} else {
 		insert_record_no_split(&leaf, key, value);
-		bplus_node_unlock(&leaf);
 		disk_write(&leaf, offset);
 	}
 
 	return polar_race::kSucc;
 }
 
-void bplus_tree::change_parent_child(off_t parent, const polar_race::PolarString &o,
-									 const polar_race::PolarString &n)
-{
-	internalNode node;
-	disk_read(&node, parent);
-
-	index *w = find(node, o);
-	assert(w != node.children + node.n); 
-
-	strcpy(w->key, n.data());
-	disk_write(&node, parent);
-	if (w == node.children + node.n - 1) {
-		change_parent_child(node.parent, o, n);
-	}
-}
-
 void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarString &key, 
 										const polar_race::PolarString &value)
 {
-	record *where = upper_bound(begin(*leaf), end(*leaf), key);
+	record *where = lower_bound(begin(*leaf), end(*leaf), key);
 	std::copy_backward(where, end(*leaf), end(*leaf) + 1);
 
 	strcpy(where->key, key.data());
@@ -323,21 +244,26 @@ void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarS
 }
 
 void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString &key,
-									 off_t old, off_t after)
+									 off_t old, off_t before)
 {
 	if (offset == 0) {
+		assert(before == 0 || old == 0);
 		// create new root node
 		internalNode root;
-		latch_init(root.lock);
+		root.id = meta.number++;
 		root.next = root.prev = root.parent = 0;
 		meta.root_offset = alloc(&root);
 		meta.height++;
 
-		// insert `old` and `after`
+		// insert `old` and `before`
 		root.n = 2;
 		strcpy(root.children[0].key, key.data());
-		root.children[0].child = old;
-		root.children[1].child = after;
+		root.children[0].child = before;
+		root.children[1].child = old;
+
+		// set last key
+		char maxChar[1] = {(char)127};
+		strcpy(root.children[1].key, maxChar);
 
 		disk_write(&meta, OFFSET_META);
 		disk_write(&root, meta.root_offset);
@@ -356,56 +282,37 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		// split when full
 
 		internalNode new_node;
-		latch_init(new_node.lock);
 		node_create(offset, &node, &new_node);
 
 		// find even split point
-		size_t point = (node.n - 1) / 2;
+		size_t point = node.n / 2;
 		bool place_right = key.compare(node.children[point].key) > 0;
 		if (place_right)
 			++point;
 
-		// prevent the `key` being the right `middle_key`
-		// example: insert 48 into |42|45| 6|  |
-		if (place_right && key.compare(node.children[point].key) < 0)
-			point--;
-
-		polar_race::PolarString middle_key = node.children[point].key;
-
-		// split
-		std::copy(begin(node) + point + 1, end(node), begin(new_node));
-		new_node.n = node.n - point - 1;
-		node.n = point + 1;
+		std::copy(begin(node), begin(node) + point, begin(new_node));
+		std::copy(begin(node) + point, end(node), begin(node));
+		new_node.n = point;
+		node.n = node.n - point;
 
 		// put the new key
 		if (place_right)
-			insert_key_to_index_no_split(new_node, key, after);
+			insert_key_to_index_no_split(node, key, before);
 		else
-			insert_key_to_index_no_split(node, key, after);
+			insert_key_to_index_no_split(new_node, key, before);
 
-		bplus_node_unlock(&node);
 		disk_write(&node, offset);
-		disk_write(&new_node, node.next);
+		disk_write(&new_node, node.prev);
 
 		// update children's parent
-		reset_index_children_parent(begin(new_node), end(new_node), node.next);
+		reset_index_children_parent(begin(new_node), end(new_node), node.prev);
 
 		// give the middle key to the parent
 		// note: middle key's child is reserved
-<<<<<<< HEAD
-		internalNode parent_node;
-		disk_read(&parent_node,node.parent);
-		bplus_node_wlock(&parent_node);
 		insert_key_to_index(node.parent, new_node.children[new_node.n - 1].key, 
 							offset, node.prev);
 	} else {
 		insert_key_to_index_no_split(node, key, before);
-		bplus_node_unlock(&node);
-=======
-		insert_key_to_index(node.parent, middle_key, offset, node.next);
-	} else {
-		insert_key_to_index_no_split(node, key, after);
->>>>>>> parent of 28316a4 (测试通过)
 		disk_write(&node, offset);
 	}
 }
@@ -413,15 +320,14 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 void bplus_tree::insert_key_to_index_no_split(internalNode &node,
 											  const polar_race::PolarString &key, off_t value)
 {
-	index *where = upper_bound(begin(node), end(node) - 1, key);
+	index *where = lower_bound(begin(node), end(node), key);
 
 	// move later index forward
 	std::copy_backward(where, end(node), end(node) + 1);
 
 	// insert this key
 	strcpy(where->key, key.data());
-	where->child = (where + 1)->child;
-	(where + 1)->child = value;
+	where->child = value;
 
 	node.n++;
 }
@@ -436,32 +342,27 @@ void bplus_tree::reset_index_children_parent(index *begin, index *end,
 	internalNode node;
 	while (begin != end) {
 		disk_read(&node, begin->child);
-		bplus_node_rlock(&node);
 		node.parent = parent;
-<<<<<<< HEAD
-		bplus_node_unlock(&node);
 		disk_write(&node, begin->child);
-=======
-		disk_write(&node, begin->child, SIZE_NO_CHILDREN);
->>>>>>> parent of 28316a4 (测试通过)
 		++begin;
 	}
 }
 
 template<class T>
-void bplus_tree::node_create(off_t offset, T *node, T *next)
+void bplus_tree::node_create(off_t offset, T *node, T *prev)
 {
 	// new sibling node
-	next->parent = node->parent;
-	next->next = node->next;
-	next->prev = offset;
-	node->next = alloc(next);
-	// update next node's prev
-	if (next->next != 0) {
-		T old_next;
-		disk_read(&old_next, next->next, SIZE_NO_CHILDREN);
-		old_next.prev = node->next;
-		disk_write(&old_next, next->next, SIZE_NO_CHILDREN);
+	prev->parent = node->parent;
+	prev->prev = node->prev;
+	prev->next = offset;
+	node->prev = alloc(prev);
+	prev->id = meta.number++;
+	// update prev node's next
+	if (prev->prev != 0) {
+		T old_prev;
+		disk_read(&old_prev, prev->prev, SIZE_NO_CHILDREN);
+		old_prev.next = node->prev;
+		disk_write(&old_prev, prev->prev, SIZE_NO_CHILDREN);
 	}
 	disk_write(&meta, OFFSET_META);
 }
