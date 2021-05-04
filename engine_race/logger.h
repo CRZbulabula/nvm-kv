@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 #include <vector>
 #include <unordered_map>
 
@@ -44,8 +45,6 @@ typedef std::vector<logItem> Transaction;
 
 class Logger {
     private:
-
-        size_t data_file_size; //数据文件大小
         pthread_mutex_t mu_; 
         unsigned int timestamp; //用操作时自增来模拟时间戳（真用time系统调用的话开销很大）
         std::vector<Transaction> transactions; //记录每个transaction的每次写操作在缓存里的id
@@ -59,8 +58,20 @@ class Logger {
         //反向索引，用于删缓存时同时删上面的 map 中的信息
         std::unordered_map<int, int> cache2node;
         std::unordered_map<int, int> latest_write_time; //最后一次写入
+
+        // read block from disk
+		int disk_read(void *block, off_t offset, size_t size);
+
+		template<class T>
+		int disk_read(T *block, off_t offset);
+
+		int disk_write(void *block, off_t offset, size_t size);
+
+		template<class T>
+		int disk_write(T *block, off_t offset);
     public:
         FILE *data_file; //存数据本体的文件
+        size_t data_file_size; //数据文件大小
         FILE *log_file; //存log的文件
         Logger(size_t _meta_size, size_t _inter_size, size_t _leaf_size)
             : mu_(PTHREAD_MUTEX_INITIALIZER),
@@ -87,18 +98,6 @@ class Logger {
         TransactionId open_transaction();
         //提交事务
         int commit_transaction(TransactionId tid);
-
-		// read block from disk
-		int disk_read(void *block, off_t offset, size_t size);
-
-		template<class T>
-		int disk_read(T *block, off_t offset);
-
-		int disk_write(void *block, off_t offset, size_t size);
-
-		template<class T>
-		int disk_write(T *block, off_t offset);
-
 };
 
 template<typename T>
@@ -268,6 +267,8 @@ int Logger::commit_transaction(TransactionId tid)
         }
     }
 
+    //释放transaction占用的空间
+    //std::swap(tx, Transaction());
     //标记log为完成状态，这样它不会被恢复
     fseek(log_file, 0, SEEK_SET);
     fwrite(&COMMITTED_CODE, sizeof(COMMITTED_CODE), 1, log_file);
