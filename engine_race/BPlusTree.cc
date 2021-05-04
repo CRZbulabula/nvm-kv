@@ -153,12 +153,8 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 		bplus_node_unlock(latchpool[node.id]);
 		node.status = 0;
 		disk_write(&node,org);
-<<<<<<< Updated upstream
-		index* i = upper_bound(begin(node), end(node) - 1, key);
-=======
 
 		index* i = lower_bound(begin(node), end(node), key);
->>>>>>> Stashed changes
 		org = i->child;
 		--height;
 	}
@@ -170,11 +166,6 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 	internalNode node;
 	//printf("ssssss\n");
 	disk_read(&node, index);
-<<<<<<< Updated upstream
-	bplus_node_rlock(&node);
-	disk_write(&node,index);
-	b_plus_tree::index* i = upper_bound(begin(node), end(node) - 1, key);
-=======
 	//printf("%d\n",node.id);
 	bplus_node_rlock(latchpool[node.id]);
 	node.status = 1;
@@ -188,17 +179,13 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 	node.status = 0;
 
 	disk_write(&node,index);
->>>>>>> Stashed changes
 	return i->child;
 }
 
 RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
 {
-<<<<<<< Updated upstream
-=======
 	//printf("search key: %s\n", key.data());
 	//tree_printf();
->>>>>>> Stashed changes
 	leafNode leaf;
 	//printf("ssssss\n");
 	disk_read(&leaf, search_leaf(key));
@@ -212,11 +199,6 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 		//printf("thread id3=%lu\n", pthread_self());
 		//printf("3\n");
 		disk_write(&leaf,search_leaf(key));
-<<<<<<< Updated upstream
-		*value = record->value.data();
-		bplus_node_unlock(&leaf);
-		disk_write(&leaf,search_leaf(key));
-=======
 
 		char *valueBlock = new char[record->valueSize + 1];
 		bzero(valueBlock, record->valueSize + 1);
@@ -226,7 +208,6 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 		leaf.status = 0;
 		disk_write(&leaf,search_leaf(key));
 		//printf("%s %s\n", record->key, key.data());
->>>>>>> Stashed changes
 		return record->key == key ? polar_race::kSucc : polar_race::kNotFound;
 	} else {
 		return polar_race::kNotFound;
@@ -322,10 +303,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	record *where = find(leaf, key);
 	if (where != leaf.children + leaf.n) {
 		if (where->key == key) {
-<<<<<<< Updated upstream
-			where->value = value;
-			bplus_node_unlock(&leaf);
-=======
 			// rewrite the value
 			where->valueSize = value.size();
 			where->valueOff = alloc(value.size());
@@ -333,7 +310,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			bplus_node_unlock(latchpool[leaf.id]);
 			leaf.status = 0;
 
->>>>>>> Stashed changes
 			disk_write(&leaf, offset);
 
 			return polar_race::kSucc;
@@ -375,29 +351,20 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 		disk_write(&new_leaf, leaf.next);
 
 		// insert new index key
-<<<<<<< Updated upstream
-		insert_key_to_index(parent, new_leaf.children[0].key,
-							offset, leaf.next);
-=======
 		insert_key_to_index(parent, new_leaf.children[new_leaf.n - 1].key,
 							offset, leaf.prev);
 
 		
->>>>>>> Stashed changes
 	} else {
 		insert_record_no_split(&leaf, key, value);
 		bplus_node_unlock(latchpool[leaf.id]);
 		leaf.status = 0;
 		disk_write(&leaf, offset);
 	}
-<<<<<<< Updated upstream
-
-=======
 	//bplus_node_unlock(latchpool[leaf.id]);
 	//leaf.status = 0;
 	//printf("1111\n");
 	//tree_printf();
->>>>>>> Stashed changes
 	return polar_race::kSucc;
 }
 
@@ -529,17 +496,12 @@ void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarS
 	record *where = upper_bound(begin(*leaf), end(*leaf), key);
 	std::copy_backward(where, end(*leaf), end(*leaf) + 1);
 
-<<<<<<< Updated upstream
-	where->key = key;
-	where->value = value;
-=======
 	strcpy(where->key, key.data());
 	where->valueSize = value.size();
 	where->valueOff = alloc(where->valueSize);
 	disk_write(value.data(), where->valueOff, where->valueSize);
 	bplus_node_unlock(latchpool[leaf->id]);
 	leaf->status = 0;
->>>>>>> Stashed changes
 	leaf->n++;
 
 	bplus_node_rlock(latchpool[leaf->id]);
@@ -630,13 +592,6 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		// note: middle key's child is reserved
 		internalNode parent_node;
 		disk_read(&parent_node,node.parent);
-<<<<<<< Updated upstream
-		bplus_node_wlock(&parent_node);
-		insert_key_to_index(node.parent, middle_key, offset, node.next);
-	} else {
-		insert_key_to_index_no_split(node, key, after);
-		bplus_node_unlock(&node);
-=======
 		//printf("write lock1\n");
 		//printf("%d\n",parent_node.status);
 		//printf("node:%d\n",node.id);
@@ -654,7 +609,6 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		insert_key_to_index_no_split(node, key, before);
 		bplus_node_unlock(latchpool[node.id]);
 		node.status = 0;
->>>>>>> Stashed changes
 		disk_write(&node, offset);
 	}
 }
@@ -690,14 +644,9 @@ void bplus_tree::reset_index_children_parent(index *begin, index *end,
 		//printf("5\n");
 		node.status = 1;
 		node.parent = parent;
-<<<<<<< Updated upstream
-		bplus_node_unlock(&node);
-		disk_write(&node, begin->child, SIZE_NO_CHILDREN);
-=======
 		bplus_node_unlock(latchpool[node.id]);
 		node.status = 0;
 		disk_write(&node, begin->child);
->>>>>>> Stashed changes
 		++begin;
 	}
 	//printf("out of loop\n");
@@ -710,32 +659,6 @@ void bplus_tree::node_create(off_t offset, T *node, T *next)
 	//disk_read(&meta,OFFSET_META);
 
 	// new sibling node
-<<<<<<< Updated upstream
-	next->parent = node->parent;
-	next->next = node->next;
-	next->prev = offset;
-	node->next = alloc(next);
-	// update next node's prev
-	if (next->next != 0) {
-		T old_next;
-		disk_read(&old_next, next->next, SIZE_NO_CHILDREN);
-		old_next.prev = node->next;
-		disk_write(&old_next, next->next, SIZE_NO_CHILDREN);
-	}
-	disk_write(&meta, OFFSET_META);
-}
-
-template<class T>
-void bplus_tree::node_remove(T *prev, T *node)
-{
-	unalloc(node, prev->next);
-	prev->next = node->next;
-	if (node->next != 0) {
-		T next;
-		disk_read(&next, node->next, SIZE_NO_CHILDREN);
-		next.prev = node->prev;
-		disk_write(&next, node->next, SIZE_NO_CHILDREN);
-=======
 	prev->parent = node->parent;
 	prev->prev = node->prev;
 	prev->next = offset;
@@ -756,7 +679,6 @@ void bplus_tree::node_remove(T *prev, T *node)
 		disk_read(&old_prev, prev->prev, SIZE_NO_CHILDREN);
 		old_prev.next = node->prev;
 		disk_write(&old_prev, prev->prev, SIZE_NO_CHILDREN);
->>>>>>> Stashed changes
 	}
 	disk_write(&meta, OFFSET_META);
 }
