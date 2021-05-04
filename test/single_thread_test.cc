@@ -74,14 +74,14 @@ int main() {
 		vs_2[i] = v;
 	}
 
-	//printf("gen OK\n");
+	printf("gen OK\n");
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Write(ks[i], vs_1[i]);
 		assert(ret == kSucc);
 	}
 	
-	//printf("write OK\n");
+	printf("write OK\n");
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		ret = engine->Read(ks[i], &value);
@@ -89,7 +89,7 @@ int main() {
 		assert(value == vs_1[i]);
 	}
 	
-    //printf("read OK\n");
+    printf("read OK\n");
 
 	for (int i = 0; i < KV_CNT; ++i) {
 		if (i % 2 == 0) {
