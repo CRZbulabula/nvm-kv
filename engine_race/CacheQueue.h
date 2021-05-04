@@ -18,7 +18,7 @@ struct CacheNode
 
 class CacheQueue {
     private:
-        unsigned char cache[CACHE_SIZE];
+        char cache[CACHE_SIZE];
         size_t item_size;
         int valid_cnt; //目前用到多少个缓存块
         int max_item_cnt;
@@ -36,6 +36,8 @@ class CacheQueue {
             sync_head = (CacheNode){-1, -1, true};
             out_sync_head = (CacheNode){-1, -1, false};
         }
+        CacheQueue(const CacheQueue&) = delete;
+        CacheQueue(CacheQueue&&) = delete;
         //增加一个缓存结点
         //要求 T 的大小等于一开始传入的 item_size,实际执行中未做检查
         //返回-1表示缓存已满
@@ -50,6 +52,11 @@ class CacheQueue {
         //当结点 commit 时会调用
         //返回0表示正常, 返回-1表示操作失败
         int sync_node(int id);
+
+        //获取指向结点对应cache处的指针
+        char* get_node_ptr(int id);
+
+        size_t get_item_size();
         
         //输出调试信息
         void print_node(int id);
@@ -134,6 +141,16 @@ int CacheQueue::sync_node(int id)
     return 0;
 }
 
+char* CacheQueue::get_node_ptr(int id)
+{
+    return cache + offset_of_node(id);
+}
+
+size_t CacheQueue::get_item_size()
+{
+    return item_size;
+}
+
 void CacheQueue::print_node(int id)
 {
     CacheNode& nd = nodes[id];
@@ -144,7 +161,7 @@ void CacheQueue::print_node(int id)
 
 void CacheQueue::print_all()
 {
-    printf("item_size %d, valid_cnt %d, max_item_cnt %d\n", item_size, valid_cnt, max_item_cnt);
+    printf("item_size %ld, valid_cnt %d, max_item_cnt %d\n", item_size, valid_cnt, max_item_cnt);
     for(int id = 0; id < valid_cnt; id++)
     {
         CacheNode& nd = nodes[id];

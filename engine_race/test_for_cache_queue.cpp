@@ -1,4 +1,5 @@
 #include "CacheQueue.h"
+#include "logger.h"
 
 #include <iostream>
 
