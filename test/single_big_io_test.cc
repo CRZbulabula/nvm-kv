@@ -8,7 +8,7 @@
 
 using namespace polar_race;
 
-#define KV_CNT 10000
+#define KV_CNT 100000
 
 char k[8192];
 char v[9024];
@@ -35,10 +35,10 @@ int main() {
 	for (int i = 0; i < KV_CNT; ++i) {
 		gen_random(k, 16);
 		ks[i] = std::string(k) + std::to_string(i);
-		gen_random(v, 16);
+		gen_random(v, 1024);
 		vs_1[i] = v;
 		vs_3[i] = v;
-		gen_random(v, 16);
+		gen_random(v, 1024);
 		vs_2[i] = v;
 	}
 

@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <limits>
+#include <algorithm>
 
 #include "include/polar_string.h"
 #include "include/engine.h"
@@ -12,15 +14,17 @@
 using polar_race::RetCode;
 
 typedef long off_t;
+typedef unsigned short s_off_t;
 
 namespace b_plus_tree {
 
-const int maxKeyLength = 256;
-const int childSize = 7;
+const size_t minKeyLength = 8;
+const int poolSize = 2048;
+//const int maxKeyLength = 256;
+const int childSize = poolSize / minKeyLength;
 
 /* meta data of B+ tree */
 struct metaData{
-	size_t order;
 	size_t internal_node_num; // how many internal nodes
 	size_t leaf_node_num;     // how many leafs
 	size_t height;            // height of tree (exclude leafs)
@@ -34,55 +38,164 @@ struct metaData{
 /* internal nodes' index segment */
 class index {
 	public:
-		char key[maxKeyLength];
 		off_t child; // child's offset
+		s_off_t keyOff; // key's offset in pool
+		s_off_t keySize;
 
 		index() {
-			bzero(key, maxKeyLength);
+			//bzero(key, maxKeyLength);
 		}
 };
 
 /* internal node block */
-struct internalNode {
-	typedef index* child;
-	
-	off_t parent; // parent node offset
-	off_t next;
-	off_t prev;
-	size_t n; // how many children
-	index children[childSize];
+class internalNode {
+	public:
+		typedef index* child;
+		
+		off_t parent; // parent node offset
+		off_t next;
+		off_t prev;
+		size_t n; // how many children
 
-	int id;
+		int id;
+		off_t slot;
+		char pool[poolSize];
+		index children[childSize];
+
+		internalNode() {
+			slot = 0;
+			bzero(pool, poolSize);
+		}
+
+		index* lower_bound(const polar_race::PolarString &key) {
+			int left = 0, right = this->n;
+			while (left < right) {
+				int mid = (left + right) >> 1;
+				const polar_race::PolarString curKey = getKey(mid);
+				if (curKey.compare(key) >= 0) {
+					right = mid;
+				}
+				else {
+					left = mid + 1;
+				}
+			}
+			if (left >= this->n) {
+				--left;
+			}
+			//printf("record next: %d %d\n", left, this->n);
+			return &children[left];
+		}
+
+		polar_race::PolarString getKey(int Index) const {
+			char *keyBlock = new char[children[Index].keySize + 1];
+			bzero(keyBlock, children[Index].keySize + 1);
+			strncpy(keyBlock, pool + children[Index].keyOff, children[Index].keySize);
+			return polar_race::PolarString(keyBlock, children[Index].keySize);
+		}
+
+		void insert_key(const polar_race::PolarString &key, index *where) {
+			strncpy(pool + slot, key.data(), key.size());
+			where->keyOff = slot;
+			where->keySize = key.size();
+			slot += key.size();
+			++n;
+		}
+
+		void append(const polar_race::PolarString &key, off_t child) {
+			strncpy(pool + slot, key.data(), key.size());
+			children[n].keyOff = slot;
+			children[n].keySize = key.size();
+			children[n].child = child;
+			slot += key.size();
+			++n;
+		}
 };
 
 /* the record of value */
 class record {
 	public:
-		char key[maxKeyLength];
-		off_t valueOff;
-		size_t valueSize;
+		off_t valueOff; // record's offset
+		off_t valueSize;
+		s_off_t keyOff; // key's offset in pool
+		s_off_t keySize;
 
 		record() {
-			bzero(key, maxKeyLength);
+			//bzero(key, maxKeyLength);
 		}
 };
 
 /* leaf node block */
-struct leafNode {
-	typedef record* child;
+class leafNode {
+	public:
+		typedef record* child;
 
-	off_t parent; // parent node offset
-	off_t next;
-	off_t prev;
-	size_t n;
-	record children[childSize];
+		off_t parent; // parent node offset
+		off_t next;
+		off_t prev;
+		size_t n;
 
-	int id;
+		int id;
+		off_t slot;
+		char pool[poolSize];
+		record children[childSize];
+
+		leafNode() {
+			slot = 0;
+			bzero(pool, poolSize);
+		}
+
+		record* lower_bound(const polar_race::PolarString &key) {
+			int left = 0, right = this->n;
+			while (left < right) {
+				int mid = (left + right) >> 1;
+				const polar_race::PolarString curKey = getKey(mid);
+				if (curKey.compare(key) >= 0) {
+					right = mid;
+				}
+				else {
+					left = mid + 1;
+				}
+			}
+			//printf("leaf next: %d %d\n", left, this->n);
+			return &children[left];
+		}
+
+		polar_race::PolarString getKey(int Index) const {
+			char *keyBlock = new char[children[Index].keySize + 1];
+			bzero(keyBlock, children[Index].keySize + 1);
+			strncpy(keyBlock, pool + children[Index].keyOff, children[Index].keySize);
+			return polar_race::PolarString(keyBlock, children[Index].keySize);
+		}
+
+		polar_race::PolarString getKey(off_t keyOff, size_t keySize) const {
+			char *keyBlock = new char[keySize + 1];
+			bzero(keyBlock, keySize + 1);
+			strncpy(keyBlock, pool + keyOff, keySize);
+			return polar_race::PolarString(keyBlock, keySize);
+		}
+
+		void insert_key(const polar_race::PolarString &key, record *where) {
+			strncpy(pool + slot, key.data(), key.size());
+			where->keyOff = slot;
+			where->keySize = key.size();
+			slot += key.size();
+			++n;
+		}
+
+		void append(const polar_race::PolarString &key, off_t valueOff, size_t valueSize) {
+			strncpy(pool + slot, key.data(), key.size());
+			children[n].keyOff = slot;
+			children[n].keySize = key.size();
+			children[n].valueOff = valueOff;
+			children[n].valueSize = valueSize;
+			slot += key.size();
+			++n;
+		}
 };
 
 const int OFFSET_META = 0;
 const int OFFSET_BLOCK = sizeof(metaData);
-const int SIZE_NO_CHILDREN = sizeof(leafNode) - childSize * sizeof(record);
+const int SIZE_NO_CHILDREN = sizeof(leafNode) - childSize * sizeof(record) - poolSize * sizeof(char);
 
 /* the encapulated B+ tree */
 class bplus_tree {
@@ -171,7 +284,7 @@ class bplus_tree {
 
 		off_t alloc(internalNode *node)
 		{
-			node->n = 1;
+			node->n = 0;
 			meta.internal_node_num++;
 			return alloc(sizeof(internalNode));
 		}
@@ -235,7 +348,7 @@ class bplus_tree {
 		void node_printf(const T *node) const {
 			printf("node size: %d node id: %d\n", node->n, node->id);
 			for (int i = 0; i < node->n; i++) {
-				printf("%s%c", node->children[i].key, i == node->n - 1 ? '\n' : ' ');
+				printf("%s%c", node->getKey(i).data(), i == node->n - 1 ? '\n' : ' ');
 			}
 		}
 
@@ -245,6 +358,7 @@ class bplus_tree {
 			internalNode node, nxtInternal;
 			leafNode nxtLeafNode;
 			disk_read(&node, org);
+			printf("********************************\n");
 			printf("internalCnt: %lld leafCnt: %lld\n", meta.internal_node_num, meta.leaf_node_num);
 			while (height > 0) {
 				disk_read(&nxtInternal, node.children[0].child);
@@ -273,21 +387,21 @@ class bplus_tree {
 		}
 };
 
-inline bool operator < (const record& x, const polar_race::PolarString& y) {
-	return y.compare(x.key) > 0;
-}
+// inline bool operator < (const record& x, const polar_race::PolarString& y) {
+// 	return y.compare(x.key) > 0;
+// }
 
-inline bool operator < (const polar_race::PolarString& x, const record& y) {
-	return x.compare(y.key) < 0;
-}
+// inline bool operator < (const polar_race::PolarString& x, const record& y) {
+// 	return x.compare(y.key) < 0;
+// }
 
-inline bool operator < (const index& x, const polar_race::PolarString& y) {
-	return y.compare(x.key) > 0;
-}
+// inline bool operator < (const index& x, const polar_race::PolarString& y) {
+// 	return y.compare(x.key) > 0;
+// }
 
-inline bool operator < (const polar_race::PolarString& x, const index& y) {
-	return x.compare(y.key) < 0;
-}
+// inline bool operator < (const polar_race::PolarString& x, const index& y) {
+// 	return x.compare(y.key) < 0;
+// }
 
 }
 #endif
