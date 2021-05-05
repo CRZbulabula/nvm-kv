@@ -37,11 +37,13 @@ void test_thread_conflict(int id) {
     std::string value;
 
     for (int k = 0; k < 10000; ++k) {
+       // printf("%d\n",k);
         for (int i = 0; i < CONFLICT_KEY; ++i) {
             ret = engine->Write(ks[0][i], vs[id][i]);
             assert(ret == kSucc);
         }
     }
+   // printf("77");
 }
 
 int main() {
@@ -76,7 +78,7 @@ int main() {
     for (int i = 0; i < THREAD_NUM; ++i) {
         ths[i].join();
     }
-
+    //printf("11111111\n");
     std::string value;
     for (int t = 0; t < THREAD_NUM; ++t) {
         for (int i = 0; i < KV_CNT; ++i) {
@@ -85,18 +87,19 @@ int main() {
             assert(value == vs[t][i]);
         }
     }
-
+    //printf("222222\n");
     ////////////////////////////////////////////////////////////////////
     for (int i = 0; i < THREAD_NUM; ++i) {
         ths[i] = std::thread(test_thread_conflict, i);
     }
+   // printf("333333\n");
     for (int i = 0; i < THREAD_NUM; ++i) {
+       // printf("66\n");
         ths[i].join();
     }
     for (int i = 0; i < CONFLICT_KEY; ++i) {
         ret = engine->Read(ks[0][i], &value);
         assert(ret == kSucc);
-
         bool found = false;
         for (int t = 0; t < THREAD_NUM; ++t) {
             if (value == vs[t][i]) {

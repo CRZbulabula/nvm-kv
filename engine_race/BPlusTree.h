@@ -9,6 +9,9 @@
 #include "include/polar_string.h"
 #include "include/engine.h"
 
+#include "latch.h"
+#include <vector>
+
 using polar_race::RetCode;
 
 typedef long off_t;
@@ -53,6 +56,7 @@ struct internalNode {
 	index children[childSize];
 
 	int id;
+	int status = 0;
 };
 
 /* the record of value */
@@ -78,7 +82,13 @@ struct leafNode {
 	record children[childSize];
 
 	int id;
+	int status = 0;
 };
+
+//锁函数声明
+void bplus_node_rlock(latch* lock);
+void bplus_node_wlock(latch* lock);
+void bplus_node_unlock(latch* lock);
 
 const int OFFSET_META = 0;
 const int OFFSET_BLOCK = sizeof(metaData);
@@ -89,9 +99,17 @@ class bplus_tree {
 	private:
 		metaData meta;
 		char path[512];
+		std::vector<latch*> latchpool;
 
 	public:
-		bplus_tree(): fp(NULL), fp_level(0) {}
+		bplus_tree(): fp(NULL), fp_level(0) {
+			for(int i = 0; i < meta.number; i++)
+				{
+					latch* latch_insert = new latch;
+					latch_init(latch_insert);
+					latchpool.push_back(latch_insert);
+				}
+		}
 
 		/* abstract operations */
 		RetCode search(const polar_race::PolarString& key, std::string *value) const;
@@ -234,6 +252,8 @@ class bplus_tree {
 		template<class T>
 		void node_printf(const T *node) const {
 			printf("node size: %d node id: %d\n", node->n, node->id);
+			printf("node status:%d\n",node->status);
+			printf("node id:%d\n",node->id);
 			for (int i = 0; i < node->n; i++) {
 				printf("%s%c", node->children[i].key, i == node->n - 1 ? '\n' : ' ');
 			}
