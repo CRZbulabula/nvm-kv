@@ -4,7 +4,6 @@
 
 #include <list>
 #include <algorithm>
-#include <time.h>
 using std::swap;
 using std::binary_search;
 using std::lower_bound;
@@ -113,17 +112,10 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 		internalNode node;
 		disk_read(&node, org);
 		
-		clock_t start,endtime;
-		start = clock();
 		bplus_node_rlock(latchpool[node.id]);
-		endtime = clock();
-		printf("locktime:%f\n",(double)(start-endtime)/CLOCKS_PER_SEC);
 		node.status = 1;
 		disk_write(&node,org);//e
-		start = clock();
 		bplus_node_unlock(latchpool[node.id]);
-		endtime = clock();
-		printf("unlocktime:%f\n",(double)(start-endtime)/CLOCKS_PER_SEC);
 		node.status = 0;
 		disk_write(&node,org);//e
 

@@ -6,8 +6,6 @@
 
 #include "include/engine.h"
 #include "test_util.h"
-#include <time.h>
-
 
 using namespace polar_race;
 
@@ -62,9 +60,6 @@ int main() {
     assert(ret == kSucc);
     printf("open engine_path: %s\n", engine_path.c_str());
 
-    clock_t start_t,end_t;
-    start_t = clock();
-
     for (int t = 0; t < THREAD_NUM; ++t) {
         for (int i = 0; i < KV_CNT; ++i) {
             gen_random(k, 6);
@@ -116,10 +111,6 @@ int main() {
     }
 
     delete engine;
-
-    end_t = clock();
-
-    printf("time is:%f\n",(double)(end_t-start_t)/CLOCKS_PER_SEC);
 
     printf_(
         "======================= multi thread test pass :) "
