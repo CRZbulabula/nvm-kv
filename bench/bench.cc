@@ -91,6 +91,8 @@ int main(int argc, char **argv) {
     }
     delete engine;
 
+    puts("write ok");
+
     std::thread ths[MAX_THREAD];
 
     timespec s, e;

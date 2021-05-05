@@ -98,26 +98,14 @@ RetCode EngineRace::Read(const PolarString& key, std::string* value) {
 //   Range("", "", visitor)
 RetCode EngineRace::Range(const PolarString& lower, const PolarString& upper,
 							 Visitor& visitor) {
-	// pthread_mutex_lock(&mu_);
-	// std::map<std::string, Location> locations;
-	// RetCode ret =
-	// 	plate_.GetRangeLocation(lower.ToString(), upper.ToString(), &locations);
-	// if (ret != kSucc) {
-	// 	pthread_mutex_unlock(&mu_);
-	// 	return ret;
-	// }
-
-	// std::string value;
-	// for (auto& pair : locations) {
-	// 	ret = store_.Read(pair.second, &value);
-	// 	if (kSucc != ret) {
-	// 		break;
-	// 	}
-	// 	visitor.Visit(pair.first, value);
-	// }
-	// pthread_mutex_unlock(&mu_);
-	// return ret;
-	return kSucc;
+	pthread_mutex_lock(&mu_);
+	RetCode ret = store.search_range(lower, upper, visitor);
+	if (ret != kSucc) {
+		pthread_mutex_unlock(&mu_);
+		return ret;
+	}
+	pthread_mutex_unlock(&mu_);
+	return ret;
 }
 
 }  // namespace polar_race
