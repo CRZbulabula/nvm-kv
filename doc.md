@@ -1,10 +1,25 @@
 # KV Store实验报告
 ## 系统框架
-
+本次`KV Store`实验我们小组选用B+树作为存储索引的数据结构，B+树在面对大量的硬盘文件时有良好的吞吐性能，还可以支持区间查询。
+// TODO: 锁与WAL简述
 
 ### 项目文件
+在`/engine_race`目录中，我们新建了如下文件：
++ BPlusTree.h, BPlusTree.cc，B+树代码
+// TODO: WAL文件
 
-### 测试文件
+### 正确性与性能测试
+#### 正确性测试
+在`/test`目录中，我们新建了如下文件：
++ single_small_io_test.cc, single_middle_io_test.cc, single_big_io_test.cc，在不同量级的IO数据下测试单线程工作的正确性
++ range_test.cc，测试B+树区间查询的正确性
+// TODO: 崩溃一致性测试
+
+#### 性能测试
+B+树读写吞吐量如下：
+
+B+树并发效率如下：
+
 
 ## 优化与创新
 ### B+树分裂策略改进
@@ -26,7 +41,7 @@
 
 
 ## 思考题
-### 1. 
+### 1. 如何保证和验证Key Value存储引擎的Crash Consistency？
 
 ### 2. 基于SSD和HDD的键值存储系统⽐基于NVM更需要考虑如何高效地完成IO操作。目前KV对外存读写数据的方式有以下几种，他们对KV的整体吞吐、IO利用率和内存使用率有何差异？
 
