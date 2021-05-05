@@ -8,7 +8,7 @@
 
 using namespace polar_race;
 
-#define KV_CNT 1000000
+#define KV_CNT 10000
 
 char k[8192];
 char v[9024];
@@ -19,7 +19,7 @@ std::string vs_3[KV_CNT];
 int main() {
 	Engine *engine = NULL;
 	printf_(
-		"======================= single big io test "
+		"======================= single middle io test "
 		"============================");
 #ifdef MOCK_NVM
 	std::string engine_path =
@@ -103,7 +103,7 @@ int main() {
 	printf("reopen OK\n");
 
 	printf_(
-		"======================= single big io test pass :) "
+		"======================= single middle io test pass :) "
 		"======================");
 
 	return 0;

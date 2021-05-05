@@ -1,11 +1,17 @@
 #!/bin/bash
 
-./single_big_io_test
+
 echo --------------------------------------
 ./single_thread_test
 echo --------------------------------------
-# ./multi_thread_test
+./multi_thread_test
 echo --------------------------------------
 ./crash_test
 echo --------------------------------------
 ./range_test
+echo --------------------------------------
+./single_small_io_test
+echo --------------------------------------
+./single_middle_io_test
+echo --------------------------------------
+./single_big_io_test
