@@ -50,25 +50,25 @@ EngineExample::~EngineExample() {
 }
 
 RetCode EngineExample::Write(const PolarString& key, const PolarString& value) {
-    //pthread_mutex_lock(&mu_);
+    pthread_mutex_lock(&mu_);
     Location location;
     RetCode ret = store_.Append(value.ToString(), &location);
     if (ret == kSucc) {
         ret = plate_.AddOrUpdate(key.ToString(), location);
     }
-    //pthread_mutex_unlock(&mu_);
+    pthread_mutex_unlock(&mu_);
     return ret;
 }
 
 RetCode EngineExample::Read(const PolarString& key, std::string* value) {
-    //pthread_mutex_lock(&mu_);
+    pthread_mutex_lock(&mu_);
     Location location;
     RetCode ret = plate_.Find(key.ToString(), &location);
     if (ret == kSucc) {
         value->clear();
         ret = store_.Read(location, value);
     }
-    //pthread_mutex_unlock(&mu_);
+    pthread_mutex_unlock(&mu_);
     return ret;
 }
 

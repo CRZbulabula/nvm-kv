@@ -43,10 +43,14 @@ RetCode EngineRace::Open(const std::string &name, Engine **eptr) {
 	}
 
 	// Check lock file
-	if (!FileExists(name + "/" + kLockFile) && 0 != LockFile(name + "/" + kLockFile, &(engine_race->db_lock_))) {
-		delete engine_race;
-		return kIOError;
-	}
+	//if (!FileExists(name + "/" + kLockFile) && 0 != LockFile(name + "/" + kLockFile, &(engine_race->db_lock_))) {
+	//	delete engine_race;
+	//	return kIOError;
+	//}
+	//if (!FileExists(name + "/" + kLockFile) ) {
+	//	delete engine_race;
+	//	return kIOError;
+	//}
 
 	// init B+ tree
 	RetCode ret = engine_race->store.init((name + "/" + kDataFile).c_str());
@@ -60,16 +64,16 @@ RetCode EngineRace::Open(const std::string &name, Engine **eptr) {
 }
  
 EngineRace::~EngineRace() {
-	if (db_lock_) {
-		UnlockFile(db_lock_);
-	}
+	//if (db_lock_) {
+	//	UnlockFile(db_lock_);
+	//}
 }
 
 // 3. Write a key-value pair into engine
 RetCode EngineRace::Write(const PolarString& key, const PolarString& value) {
-	pthread_mutex_lock(&mu_);
+	//pthread_mutex_lock(&mu_);
 	RetCode ret = store.insert_or_update(key, value);
-	pthread_mutex_unlock(&mu_);
+	//pthread_mutex_unlock(&mu_);
 	return ret;
 }
 

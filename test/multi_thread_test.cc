@@ -7,12 +7,12 @@
 #include "include/engine.h"
 #include "test_util.h"
 #include <time.h>
-
+#include <pthread.h>
 
 using namespace polar_race;
 
 #define KV_CNT 1000
-#define THREAD_NUM 4
+#define THREAD_NUM 2
 #define CONFLICT_KEY 50
 
 char k[1024];
@@ -24,11 +24,15 @@ Engine *engine = NULL;
 void test_thread(int id) {
     RetCode ret;
     std::string value;
+    //printf("-----%d------\n",id);
     for (int i = 0; i < KV_CNT; ++i) {
+        //printf("%d\n",i);
         ret = engine->Write(ks[id][i], vs[id][i]);
+        printf("%lld-wret:%d\n",pthread_self(),ret);
         assert(ret == kSucc);
-
+        //printf("2\n");
         ret = engine->Read(ks[id][i], &value);
+        printf("%lld-rret:%d\n",pthread_self(),ret);
         assert(ret == kSucc);
         assert(value == vs[id][i]);
     }
@@ -64,7 +68,7 @@ int main() {
 
     clock_t start_t,end_t;
     start_t = clock();
-
+    
     for (int t = 0; t < THREAD_NUM; ++t) {
         for (int i = 0; i < KV_CNT; ++i) {
             gen_random(k, 6);
@@ -78,12 +82,14 @@ int main() {
 
     std::thread ths[THREAD_NUM];
     for (int i = 0; i < THREAD_NUM; ++i) {
+        //printf("round:%d\n",i);
         ths[i] = std::thread(test_thread, i);
     }
+    printf("11111111\n");
     for (int i = 0; i < THREAD_NUM; ++i) {
         ths[i].join();
     }
-    //printf("11111111\n");
+    
     std::string value;
     for (int t = 0; t < THREAD_NUM; ++t) {
         for (int i = 0; i < KV_CNT; ++i) {
