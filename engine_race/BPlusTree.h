@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <limits>
 #include <algorithm>
+#include <mutex>
 
 #include "include/polar_string.h"
 #include "include/engine.h"
@@ -28,6 +29,15 @@ const int childSize = poolSize / minKeyLength;
 
 /* meta data of B+ tree */
 struct metaData{
+	// std::atomic<size_t> internal_node_num;
+	// std::atomic<size_t> leaf_node_num;     // how many leafs
+	// std::atomic<size_t> height;            // height of tree (exclude leafs)
+	// std::atomic<off_t> slot;        // where to store new block
+	// std::atomic<off_t> root_offset; // where is the root of internal node
+	// std::atomic<off_t> leaf_offset; // where is the last leaf node
+
+	// std::atomic<int> number;		   // node count
+
 	size_t internal_node_num; // how many internal nodes
 	size_t leaf_node_num;     // how many leafs
 	size_t height;            // height of tree (exclude leafs)
@@ -220,6 +230,7 @@ class bplus_tree {
 		metaData meta;
 		char path[512];
 		std::vector<latch*> latchpool;
+		std::mutex meta_mutex;
 
 	public:
 		bplus_tree(): fp(NULL), fp_level(0) {
@@ -295,33 +306,43 @@ class bplus_tree {
 		// alloc from disk
 		off_t alloc(size_t size)
 		{
+			meta_mutex.lock();
 			off_t slot = meta.slot;
 			meta.slot += size;
+			meta_mutex.unlock();
 			return slot;
 		}
 
 		off_t alloc(leafNode *leaf)
 		{
+			meta_mutex.lock();
 			leaf->n = 0;
 			meta.leaf_node_num++;
+			meta_mutex.unlock();
 			return alloc(sizeof(leafNode));
 		}
 
 		off_t alloc(internalNode *node)
 		{
 			node->n = 0;
+			meta_mutex.lock();
 			meta.internal_node_num++;
+			meta_mutex.unlock();
 			return alloc(sizeof(internalNode));
 		}
 
 		void unalloc(leafNode *leaf, off_t offset)
 		{
+			meta_mutex.lock();
 			--meta.leaf_node_num;
+			meta_mutex.unlock();
 		}
 
 		void unalloc(internalNode *node, off_t offset)
 		{
+			meta_mutex.lock();
 			--meta.internal_node_num;
+			meta_mutex.unlock();
 		}
 
 		// read block from disk
@@ -379,7 +400,9 @@ class bplus_tree {
 			}
 		}
 
-		void tree_printf() const {
+		void tree_printf() {
+			meta_mutex.lock();
+
 			off_t org = meta.root_offset;
 			int height = meta.height;
 			internalNode node, nxtInternal;
@@ -411,6 +434,8 @@ class bplus_tree {
 				}
 				disk_read(&nxtLeafNode, nxtLeafNode.prev);
 			}
+			printf("--------------------------------tree printf end\n");
+			meta_mutex.unlock();
 		}
 };
 

@@ -11,7 +11,7 @@
 
 using namespace polar_race;
 
-#define KV_CNT 1000
+#define KV_CNT 10
 #define THREAD_NUM 2
 #define CONFLICT_KEY 50
 
@@ -24,18 +24,19 @@ Engine *engine = NULL;
 void test_thread(int id) {
     RetCode ret;
     std::string value;
-    //printf("-----%d------\n",id);
     for (int i = 0; i < KV_CNT; ++i) {
-        //printf("%d\n",i);
+        printf("thread: %lld try write\n", pthread_self());
         ret = engine->Write(ks[id][i], vs[id][i]);
-        printf("%lld-wret:%d\n",pthread_self(),ret);
+        printf("thread: %lld-wret:%d\n",pthread_self(),ret);
         assert(ret == kSucc);
-        //printf("2\n");
+        continue;
+        printf("thread: %lld try read\n", pthread_self());
         ret = engine->Read(ks[id][i], &value);
-        printf("%lld-rret:%d\n",pthread_self(),ret);
+        printf("thread: %lld-rret:%d\n",pthread_self(),ret);
         assert(ret == kSucc);
         assert(value == vs[id][i]);
     }
+    printf("thread: %lld all write done\n", pthread_self());
 }
 
 void test_thread_conflict(int id) {
@@ -79,25 +80,37 @@ int main() {
             vs[t][i] = v;
         }
     }
+    
+    puts("gen ok");
 
     std::thread ths[THREAD_NUM];
     for (int i = 0; i < THREAD_NUM; ++i) {
         //printf("round:%d\n",i);
         ths[i] = std::thread(test_thread, i);
     }
-    printf("11111111\n");
+
+    puts("all thread created");
+
     for (int i = 0; i < THREAD_NUM; ++i) {
         ths[i].join();
     }
     
+    puts("all thread joined");
+
+    puts("try data check");
     std::string value;
     for (int t = 0; t < THREAD_NUM; ++t) {
+        if (t == 1) continue;
         for (int i = 0; i < KV_CNT; ++i) {
             ret = engine->Read(ks[t][i], &value);
             assert(ret == kSucc);
             assert(value == vs[t][i]);
         }
     }
+
+    puts("data checked");
+    exit(0);
+
     //printf("222222\n");
     ////////////////////////////////////////////////////////////////////
     for (int i = 0; i < THREAD_NUM; ++i) {
