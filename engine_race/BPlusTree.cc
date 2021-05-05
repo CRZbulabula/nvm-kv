@@ -36,9 +36,17 @@ RetCode bplus_tree::init(const char *p)
 {
 	bzero(path, sizeof(path));
 	strcpy(path, p);
-	if (disk_read(&meta, OFFSET_META) != 0) {
-		RetCode ret = open_file("w+");
-		if (ret != polar_race::kSucc) {
+	
+	// init logger
+	static char log_path[512 + 10];
+	strcpy(log_path, path);
+	strcat(log_path, "_log\0");
+	printf("path = %s\nlog_path = %s\n", path, log_path);
+	RetCode ret = logger.init(path, log_path);
+	
+	if (disk_read(&meta, NodeType::meta, metadata_id, OFFSET_META) != 0) {
+		// 改成返回 kSucc 说明文件不为空，否则说明需要重新设定metadata
+		if (ret == polar_race::kSucc) {
 			return ret;
 		}
 
@@ -68,22 +76,23 @@ RetCode bplus_tree::init(const char *p)
 		leaf.append(maxChar, -1, -1);
 
 		// save
-		disk_write(&meta, OFFSET_META);
-		disk_write(&root, meta.root_offset);
-		disk_write(&leaf, root.children[0].child);
-		ret = close_file();
-		return ret;
+		TransactionId tid = logger.open_transaction();
+		disk_write(&meta, NodeType::meta, metadata_id, OFFSET_META, tid);
+		disk_write(&root, NodeType::inter, root.id, meta.root_offset, tid);
+		disk_write(&leaf, NodeType::leaf, leaf.id, root.children[0].child, tid);
+		logger.commit_transaction(tid);
+		return polar_race::kSucc;
 	}
 	return polar_race::kSucc;
 }
 
-off_t bplus_tree::search_index(const polar_race::PolarString &key) const
+off_t bplus_tree::search_index(const polar_race::PolarString &key)
 {
 	off_t org = meta.root_offset;
 	int height = meta.height;
 	while (height > 1) {
 		internalNode node;
-		disk_read(&node, org);
+		disk_read(&node, NodeType::inter, org);
 		index* i = node.lower_bound(key);
 		org = i->child;
 		--height;
@@ -92,19 +101,21 @@ off_t bplus_tree::search_index(const polar_race::PolarString &key) const
 	return org;
 }
 
-off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) const
+off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key)
 {
 	internalNode node;
-	disk_read(&node, index);
+	disk_read(&node, NodeType::inter, index);
 	b_plus_tree::index* i = node.lower_bound(key);
 	return i->child;
 }
 
-RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
+RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value)
 {
 	leafNode leaf;
-	disk_read(&leaf, search_leaf(key));
-
+	disk_read(&leaf, NodeType::leaf, search_leaf(key));
+	node_printf(&leaf);
+	printf("key to find = %s\n", key);
+	//tree_printf();
 	// finding the record
 	record *record = find(leaf, key);
 	if (record != leaf.children + leaf.n) {
@@ -115,7 +126,8 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 		}
 		char *valueBlock = new char[record->valueSize + 1];
 		bzero(valueBlock, record->valueSize + 1);
-		disk_read(valueBlock, record->valueOff, record->valueSize);
+		//写value的地方不属于结点，所以只能强行写，不过写value不影响崩溃一致性
+		logger.read_disk_raw(valueBlock, record->valueOff, record->valueSize);
 		*value = std::string(valueBlock, record->valueSize);
 		return polar_race::kSucc;
 	} else {
@@ -178,11 +190,15 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 
 RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value)
 {
+	//开启一个transaction
+	//由于多线程同时访问 B+树,TID必须在栈上传递
+	TransactionId tid = logger.open_transaction();
+
 	off_t parent = search_index(key);
 	off_t offset = search_leaf(parent, key);
 	//printf("%d %d\n", parent, offset);
 	leafNode leaf;
-	disk_read(&leaf, offset);
+	disk_read(&leaf, NodeType::leaf, offset);
 
 	// check if we have the same key
 	record *where = find(leaf, key);
@@ -192,8 +208,10 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			// rewrite the value
 			where->valueSize = value.size();
 			where->valueOff = alloc(value.size());
-			disk_write(value.data(), where->valueOff, where->valueSize);
-			disk_write(&leaf, offset);
+			//value 类型强转
+			logger.write_disk_raw((void *)value.data(), where->valueOff, where->valueSize);
+			disk_write(&leaf, NodeType::leaf, leaf.id, offset, tid);
+			logger.commit_transaction(tid);
 			return polar_race::kSucc;
 		}
 	}
@@ -203,7 +221,7 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	if (leaf.slot + key.size() > poolSize || leaf.n == childSize) {
 		// new sibling leaf
 		leafNode new_leaf;
-		node_create(offset, &leaf, &new_leaf);
+		node_create(offset, &leaf, &new_leaf, tid);
 
 		// find even split point
 		size_t point = leaf.n / 2;
@@ -232,41 +250,44 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 		}
 		//printf("%d %d\n", new_leaf.slot, leaf.slot);
 
+		//由于多线程同时访问 B+树,TID必须在栈上传递
 		// which part do we put the key
 		if (place_right)
-			insert_record_no_split(&leaf, key, value);
+			insert_record_no_split(&leaf, key, value, tid);
 		else
-			insert_record_no_split(&new_leaf, key, value);
+			insert_record_no_split(&new_leaf, key, value, tid);
 		// save leafs
-		disk_write(&leaf, offset);
-		disk_write(&new_leaf, leaf.prev);
+		disk_write(&leaf, NodeType::leaf, leaf.id, offset, tid);
+		disk_write(&new_leaf, NodeType::leaf, new_leaf.id, leaf.prev, tid);
 
 		// insert new index key
 		insert_key_to_index(parent, new_leaf.getKey(new_leaf.n - 1),
-							offset, leaf.prev);
+							offset, leaf.prev, tid);
 	} else {
-		insert_record_no_split(&leaf, key, value);
-		disk_write(&leaf, offset);
+		insert_record_no_split(&leaf, key, value, tid);
+		disk_write(&leaf, NodeType::leaf, leaf.id, offset, tid);
 	}
 
 	//tree_printf();
 	//puts("");
+	logger.commit_transaction(tid);
 	return polar_race::kSucc;
 }
 
 void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarString &key, 
-										const polar_race::PolarString &value)
+										const polar_race::PolarString &value, TransactionId& tid)
 {
 	record *where = leaf->lower_bound(key);
 	std::copy_backward(where, end(*leaf), end(*leaf) + 1);
 	leaf->insert_key(key, where);
 	where->valueSize = value.size();
 	where->valueOff = alloc(where->valueSize);
-	disk_write(value.data(), where->valueOff, where->valueSize);
+	//value 类型强转
+	logger.write_disk_raw((void*)value.data(), where->valueOff, where->valueSize);
 }
 
 void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString &key,
-									 off_t old, off_t before)
+									 off_t old, off_t before, TransactionId& tid)
 {
 	if (offset == 0) {
 		assert(before == 0 || old == 0);
@@ -284,23 +305,23 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		root.children[0].child = before;
 		root.children[1].child = old;
 
-		disk_write(&meta, OFFSET_META);
-		disk_write(&root, meta.root_offset);
+		disk_write(&meta, NodeType::meta, metadata_id, OFFSET_META, tid);
+		disk_write(&root, NodeType::inter, root.id, meta.root_offset, tid);
 
 		// update children's parent
 		reset_index_children_parent(begin(root), end(root),
-									meta.root_offset);
+									meta.root_offset, tid);
 		return;
 	}
 
 	internalNode node;
-	disk_read(&node, offset);
+	disk_read(&node, NodeType::inter, offset);
 
 	// split when full
 	//size_t delta = key.size() < minKeyLength ? minKeyLength : key.size();
 	if (node.slot + key.size() > poolSize || node.n == childSize) {
 		internalNode new_node;
-		node_create(offset, &node, &new_node);
+		node_create(offset, &node, &new_node, tid);
 
 		// find even split point
 		size_t point = node.n / 2;
@@ -328,28 +349,28 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 
 		// put the new key
 		if (place_right)
-			insert_key_to_index_no_split(node, key, before);
+			insert_key_to_index_no_split(node, key, before, tid);
 		else
-			insert_key_to_index_no_split(new_node, key, before);
+			insert_key_to_index_no_split(new_node, key, before, tid);
 
-		disk_write(&node, offset);
-		disk_write(&new_node, node.prev);
+		disk_write(&node, NodeType::inter, node.id, offset, tid);
+		disk_write(&new_node, NodeType::inter, new_node.id, node.prev, tid);
 
 		// update children's parent
-		reset_index_children_parent(begin(new_node), end(new_node), node.prev);
+		reset_index_children_parent(begin(new_node), end(new_node), node.prev, tid);
 
 		// give the middle key to the parent
 		// note: middle key's child is reserved
 		insert_key_to_index(node.parent, new_node.getKey(new_node.n - 1), 
-							offset, node.prev);
+							offset, node.prev, tid);
 	} else {
-		insert_key_to_index_no_split(node, key, before);
-		disk_write(&node, offset);
+		insert_key_to_index_no_split(node, key, before, tid);
+		disk_write(&node, NodeType::inter, node.id, offset, tid);
 	}
 }
 
 void bplus_tree::insert_key_to_index_no_split(internalNode &node,
-											  const polar_race::PolarString &key, off_t value)
+											  const polar_race::PolarString &key, off_t value, TransactionId& tid)
 {
 	index *where = node.lower_bound(key);
 	std::copy_backward(where, end(node), end(node) + 1);
@@ -358,7 +379,7 @@ void bplus_tree::insert_key_to_index_no_split(internalNode &node,
 }
 
 void bplus_tree::reset_index_children_parent(index *begin, index *end,
-											 off_t parent)
+											 off_t parent, TransactionId& tid)
 {
 	// this function can change both internalNode and leafNode's parent
 	// field, but we should ensure that:
@@ -366,15 +387,16 @@ void bplus_tree::reset_index_children_parent(index *begin, index *end,
 	// 2. parent field is placed in the beginning and have same size
 	internalNode node;
 	while (begin != end) {
-		disk_read(&node, begin->child);
+		disk_read(&node, NodeType::inter, begin->child);
 		node.parent = parent;
-		disk_write(&node, begin->child);
+		disk_write(&node, NodeType::inter, node.id, begin->child, tid);
 		++begin;
 	}
 }
 
+/*
 template<class T>
-void bplus_tree::node_create(off_t offset, T *node, T *prev)
+void bplus_tree::node_create(off_t offset, T *node, T *prev, TransactionId& tid)
 {
 	// new sibling node
 	prev->parent = node->parent;
@@ -389,7 +411,44 @@ void bplus_tree::node_create(off_t offset, T *node, T *prev)
 		old_prev.next = node->prev;
 		disk_write(&old_prev, prev->prev, SIZE_NO_CHILDREN);
 	}
-	disk_write(&meta, OFFSET_META);
+	disk_write(&meta, NodeType::meta, metadata_id, OFFSET_META);
+}
+*/
+
+void bplus_tree::node_create(off_t offset, internalNode *node, internalNode *prev, TransactionId& tid)
+{
+	// new sibling node
+	prev->parent = node->parent;
+	prev->prev = node->prev;
+	prev->next = offset;
+	node->prev = alloc(prev);
+	prev->id = meta.number++;
+	// update prev node's next
+	if (prev->prev != 0) {
+		internalNode old_prev;
+		disk_read(&old_prev, NodeType::inter, old_prev.id, prev->prev);
+		old_prev.next = node->prev;
+		disk_write(&old_prev, NodeType::inter, old_prev.id, prev->prev, tid);
+	}
+	disk_write(&meta, NodeType::meta, metadata_id, OFFSET_META, tid);
+}
+
+void bplus_tree::node_create(off_t offset, leafNode *node, leafNode *prev, TransactionId& tid)
+{
+	// new sibling node
+	prev->parent = node->parent;
+	prev->prev = node->prev;
+	prev->next = offset;
+	node->prev = alloc(prev);
+	prev->id = meta.number++;
+	// update prev node's next
+	if (prev->prev != 0) {
+		leafNode old_prev;
+		disk_read(&old_prev, NodeType::leaf, prev->prev);
+		old_prev.next = node->prev;
+		disk_write(&old_prev, NodeType::leaf, old_prev.id, prev->prev,tid);
+	}
+	disk_write(&meta, NodeType::meta, metadata_id, OFFSET_META, tid);
 }
 
 }

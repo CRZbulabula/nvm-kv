@@ -10,6 +10,7 @@
 
 #include "include/polar_string.h"
 #include "include/engine.h"
+#include "logger.h"
 
 using polar_race::RetCode;
 
@@ -17,6 +18,8 @@ typedef long off_t;
 typedef unsigned short s_off_t;
 
 namespace b_plus_tree {
+
+const int metadata_id = -1;
 
 const size_t minKeyLength = 8;
 const int poolSize = 2048;
@@ -201,13 +204,16 @@ const int SIZE_NO_CHILDREN = sizeof(leafNode) - childSize * sizeof(record) - poo
 class bplus_tree {
 	private:
 		metaData meta;
+		Logger logger;
 		char path[512];
 
 	public:
-		bplus_tree(): fp(NULL), fp_level(0) {}
+		bplus_tree()
+			: //fp(NULL), fp_level(0), 
+			logger(sizeof(metaData), sizeof(internalNode), sizeof(leafNode)) {}
 
 		/* abstract operations */
-		RetCode search(const polar_race::PolarString& key, std::string *value) const;
+		RetCode search(const polar_race::PolarString& key, std::string *value);
 
 		// int search_range(polar_race::PolarString *left, const polar_race::PolarString &right,
 		//                 value_t *values, size_t max, bool *next = NULL) const;
@@ -220,32 +226,36 @@ class bplus_tree {
 		RetCode init(const char *path);
 
 		/* find index */
-		off_t search_index(const polar_race::PolarString &key) const;
+		off_t search_index(const polar_race::PolarString &key);
 
 		/* find leaf */
-		off_t search_leaf(off_t index, const polar_race::PolarString &key) const;
-		off_t search_leaf(const polar_race::PolarString &key) const
+		off_t search_leaf(off_t index, const polar_race::PolarString &key);
+		off_t search_leaf(const polar_race::PolarString &key)
 		{
 			return search_leaf(search_index(key), key);
 		}
 
 		/* insert into leaf without split */
 		void insert_record_no_split(leafNode *leaf,
-								const polar_race::PolarString &key, const polar_race::PolarString &value);
+								const polar_race::PolarString &key, const polar_race::PolarString &value, TransactionId& tid);
 
 		/* add key to the internal node */
 		void insert_key_to_index(off_t offset, const polar_race::PolarString &key,
-								off_t value, off_t after);
+								off_t value, off_t after, TransactionId& tid);
 		void insert_key_to_index_no_split(internalNode &node, const polar_race::PolarString &key,
-										off_t value);
+										off_t value, TransactionId& tid);
 
 		/* change children's parent */
 		void reset_index_children_parent(index *begin, index *end,
-										off_t parent);
+										off_t parent, TransactionId& tid);
 
+		/*
 		template<class T>
-		void node_create(off_t offset, T *node, T *prev);
-	
+		void node_create(off_t offset, T *node, T *prev, TransactionId& tid);
+	`	*/
+		void node_create(off_t offset, internalNode *node, internalNode *prev, TransactionId& tid);
+		void node_create(off_t offset, leafNode *node, leafNode *prev, TransactionId& tid);
+		/*
 		mutable FILE *fp;
 		mutable int fp_level;
 		RetCode open_file(const char *mode = "rb+") const
@@ -266,7 +276,7 @@ class bplus_tree {
 			--fp_level;
 			return polar_race::kSucc;
 		}
-
+		*/
 		// alloc from disk
 		off_t alloc(size_t size)
 		{
@@ -298,7 +308,7 @@ class bplus_tree {
 		{
 			--meta.internal_node_num;
 		}
-
+		/*
 		// read block from disk
 		int disk_read(void *block, off_t offset, size_t size) const
 		{
@@ -342,6 +352,25 @@ class bplus_tree {
 		{
 			return disk_write(block, offset, sizeof(T));
 		}
+		*/
+
+		template<class T>
+		int disk_read(T *block, NodeType type, int id, off_t offset)
+		{
+			return logger.read_node(block, type, id, offset);
+		}
+
+		template<class T>
+		int disk_read(T *block, NodeType type, off_t offset)
+		{
+			return logger.read_node(block, type, offset);
+		}
+
+		template<class T>
+		int disk_write(T *block, NodeType type, int node_id, off_t offset, TransactionId tid)
+		{
+			return logger.write_node(block, type, node_id, offset, tid);
+		}
 
 		// debug print
 		template<class T>
@@ -352,16 +381,16 @@ class bplus_tree {
 			}
 		}
 
-		void tree_printf() const {
+		void tree_printf() {
 			off_t org = meta.root_offset;
 			int height = meta.height;
 			internalNode node, nxtInternal;
 			leafNode nxtLeafNode;
-			disk_read(&node, org);
+			disk_read(&node, NodeType::inter, org);
 			printf("********************************\n");
 			printf("internalCnt: %lld leafCnt: %lld\n", meta.internal_node_num, meta.leaf_node_num);
 			while (height > 0) {
-				disk_read(&nxtInternal, node.children[0].child);
+				disk_read(&nxtInternal, NodeType::inter, node.children[0].child);
 				printf("--------------------------------\n");
 				printf("height: %d\n", height);
 				while (true) {
@@ -369,12 +398,12 @@ class bplus_tree {
 					if (node.next == 0) {
 						break;
 					}
-					disk_read(&node, node.next);
+					disk_read(&node, NodeType::inter, node.next);
 				}
 				node = nxtInternal;
 				--height;
 			}
-			disk_read(&nxtLeafNode, meta.leaf_offset);
+			disk_read(&nxtLeafNode, NodeType::leaf, meta.leaf_offset);
 			printf("--------------------------------\n");
 			printf("leaf nodes:\n");
 			while (true) {
@@ -382,7 +411,7 @@ class bplus_tree {
 				if (nxtLeafNode.prev == 0) {
 					break;
 				}
-				disk_read(&nxtLeafNode, nxtLeafNode.prev);
+				disk_read(&nxtLeafNode, NodeType::leaf, nxtLeafNode.prev);
 			}
 		}
 };
