@@ -147,7 +147,7 @@ off_t bplus_tree::search_leaf(off_t index, const polar_race::PolarString &key) c
 RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *value) const
 {
 	leafNode leaf;
-	printf("%lld-search key: %s\n",pthread_self() ,key.data());
+	//printf("%lld-search key: %s\n",pthread_self() ,key.data());
 	//tree_printf();
 
 	
@@ -177,10 +177,10 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 		*value = std::string(valueBlock, record->valueSize);
 		bplus_node_unlock(latchpool[leaf.id]);
 		leaf.status = 0;
-		printf("%lld-search key-succ %s\n",pthread_self() ,key.data());
+		//printf("%lld-search key-succ %s\n",pthread_self() ,key.data());
 		return polar_race::kSucc;
 	} else {
-		printf("%lld-search key-unsucc %s\n",pthread_self() ,key.data());
+		//printf("%lld-search key-unsucc %s\n",pthread_self() ,key.data());
 		return polar_race::kNotFound;
 	}
 }
@@ -270,8 +270,10 @@ RetCode bplus_tree::search_range(const polar_race::PolarString &left,
 
 RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value)
 {
+	//printf("%lld-begin-%s\n",pthread_self(),key.data());
+	//tree_printf();
 	if(meta.number < 10){
-		printf("%lld-begin-%s\n",pthread_self(),key.data());
+		//printf("%lld-begin-%s\n",pthread_self(),key.data());
 		//tree_printf();
 	}
 	off_t parent = search_index(key);
@@ -281,9 +283,10 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	disk_read(&leaf, offset);
 	//printf("ss\n");
 	bplus_node_wlock(latchpool[leaf.id]);
+	//printf("GET LOCK: %d\n", leaf.id);
 	leaf.status = 2;
 	//disk_write(&leaf,offset);//e
-	disk_read(&leaf, offset);
+	//disk_read(&leaf, offset);
 
 	
 
@@ -297,13 +300,13 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			where->valueOff = alloc(value.size());
 			disk_write(value.data(), where->valueOff, where->valueSize);
 			
+			leaf.status = 0;
 			disk_write(&leaf, offset);
 
 			bplus_node_unlock(latchpool[leaf.id]);
-			leaf.status = 0;
 
 			if(meta.number < 10){
-				printf("%lld-endl\n",pthread_self());
+				//printf("%lld-endl\n",pthread_self());
 			}
 			return polar_race::kSucc;
 		}
@@ -312,7 +315,7 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	// split when full
 	//size_t delta = key.size() < minKeyLength ? minKeyLength : key.size();
 	if (leaf.slot + key.size() > poolSize || leaf.n == childSize) {
-		printf("into full\n");
+		//printf("into full\n");
 		// new sibling leaf
 		leafNode new_leaf;
 		node_create(offset, &leaf, &new_leaf);
@@ -348,14 +351,13 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			insert_record_no_split(&leaf, key, value);
 		else
 			insert_record_no_split(&new_leaf, key, value);
-		// save leafs
 
-		
+		// save leafs
+		leaf.status = 0;
 		disk_write(&leaf, offset);
 		disk_write(&new_leaf, leaf.prev);
 
 		bplus_node_unlock(latchpool[leaf.id]);
-		leaf.status = 0;
 
 
 		// insert new index key
@@ -364,15 +366,15 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	} else {
 		insert_record_no_split(&leaf, key, value);
 		
-		printf("%lld-into insert_record_no_split\n",pthread_self());
+		//printf("%lld-into insert_record_no_split\n",pthread_self());
+		leaf.status = 0;
 		disk_write(&leaf, offset);
 
 		bplus_node_unlock(latchpool[leaf.id]);
-		leaf.status = 0;
 	}
 	if(meta.number < 10){
 		//tree_printf();
-		printf("%lld-end\n",pthread_self());
+		//printf("%lld-end\n",pthread_self());
 	}
 
 	//tree_printf();
@@ -400,6 +402,8 @@ void bplus_tree::insert_record_no_split(leafNode *leaf, const polar_race::PolarS
 void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString &key,
 									 off_t old, off_t before)
 {
+	//puts("insert index");
+	//tree_printf();
 	if (offset == 0) {
 		assert(before == 0 || old == 0);
 		// create new root node
@@ -433,6 +437,7 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 	internalNode node;
 	disk_read(&node, offset);
 	bplus_node_wlock(latchpool[node.id]);
+	//printf("GET LOCK: %d\n", node.id);
 	node.status = 2;
 
 	// split when full
@@ -469,13 +474,11 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		else
 			insert_key_to_index_no_split(new_node, key, before);
 
-		
-
+		node.status = 0;
 		disk_write(&node, offset);
 		disk_write(&new_node, node.prev);
 
 		bplus_node_unlock(latchpool[node.id]);
-		node.status = 0;
 
 		// update children's parent
 		reset_index_children_parent(begin(new_node), end(new_node), node.prev);
@@ -487,10 +490,10 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 	} else {
 		insert_key_to_index_no_split(node, key, before);
 
+		node.status = 0;
 		disk_write(&node, offset);
 
 		bplus_node_unlock(latchpool[node.id]);
-		node.status = 0;
 	}
 }
 
@@ -528,11 +531,10 @@ void bplus_tree::reset_index_children_parent(index *begin, index *end,
 		node.parent = parent;
 
 		
-
+		node.status = 0;
 		disk_write(&node, begin->child);
 
 		bplus_node_unlock(latchpool[node.id]);
-		node.status = 0;
 		++begin;
 	}
 }
@@ -555,8 +557,8 @@ void bplus_tree::node_create(off_t offset, T *node, T *prev)
 		T old_prev;
 		disk_read(&old_prev, prev->prev, SIZE_NO_CHILDREN);
 
-		bplus_node_rlock(latchpool[old_prev.id]);
-		bplus_node_rlock(latchpool[prev->id]);
+		//bplus_node_rlock(latchpool[old_prev.id]);
+		//bplus_node_rlock(latchpool[prev->id]);
 
 		disk_read(&old_prev, prev->prev, SIZE_NO_CHILDREN);
 
@@ -564,8 +566,8 @@ void bplus_tree::node_create(off_t offset, T *node, T *prev)
 
 		disk_write(&old_prev, prev->prev, SIZE_NO_CHILDREN);
 
-		bplus_node_rlock(latchpool[old_prev.id]);
-		bplus_node_rlock(latchpool[prev->id]);
+		//bplus_node_unlock(latchpool[old_prev.id]);
+		//bplus_node_unlock(latchpool[prev->id]);
 	}
 	disk_write(&meta, OFFSET_META);
 }
