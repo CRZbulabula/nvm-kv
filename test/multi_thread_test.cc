@@ -39,7 +39,7 @@ void test_thread_conflict(int id) {
     std::string value;
 
     for (int k = 0; k < 10000; ++k) {
-       // printf("%d\n",k);
+        //printf("%d\n",k);
         for (int i = 0; i < CONFLICT_KEY; ++i) {
             ret = engine->Write(ks[0][i], vs[id][i]);
             assert(ret == kSucc);
@@ -97,7 +97,7 @@ int main() {
     for (int i = 0; i < THREAD_NUM; ++i) {
         ths[i] = std::thread(test_thread_conflict, i);
     }
-   // printf("333333\n");
+    //printf("333333\n");
     for (int i = 0; i < THREAD_NUM; ++i) {
        // printf("66\n");
         ths[i].join();
