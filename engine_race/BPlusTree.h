@@ -21,7 +21,7 @@ namespace b_plus_tree {
 
 const int metadata_id = -1;
 
-const size_t minKeyLength = 8;
+const size_t minKeyLength = 20;
 const int poolSize = 2048;
 //const int maxKeyLength = 256;
 const int childSize = poolSize / minKeyLength;
@@ -94,6 +94,13 @@ class internalNode {
 			bzero(keyBlock, children[Index].keySize + 1);
 			strncpy(keyBlock, pool + children[Index].keyOff, children[Index].keySize);
 			return polar_race::PolarString(keyBlock, children[Index].keySize);
+		}
+
+		polar_race::PolarString getKey(off_t keyOff, size_t keySize) const {
+			char *keyBlock = new char[keySize + 1];
+			bzero(keyBlock, keySize + 1);
+			strncpy(keyBlock, pool + keyOff, keySize);
+			return polar_race::PolarString(keyBlock, keySize);
 		}
 
 		void insert_key(const polar_race::PolarString &key, index *where) {
@@ -214,9 +221,9 @@ class bplus_tree {
 
 		/* abstract operations */
 		RetCode search(const polar_race::PolarString& key, std::string *value);
-
-		// int search_range(polar_race::PolarString *left, const polar_race::PolarString &right,
-		//                 value_t *values, size_t max, bool *next = NULL) const;
+		RetCode search_range(const polar_race::PolarString &lower, 
+							 const polar_race::PolarString &upper, polar_race::Visitor& visitor);
+		
 		RetCode insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value);
 		metaData getMeta() const {
 			return meta;
