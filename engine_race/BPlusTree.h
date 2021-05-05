@@ -18,7 +18,7 @@ typedef unsigned short s_off_t;
 
 namespace b_plus_tree {
 
-const size_t minKeyLength = 8;
+const size_t minKeyLength = 20;
 const int poolSize = 2048;
 //const int maxKeyLength = 256;
 const int childSize = poolSize / minKeyLength;
@@ -215,9 +215,9 @@ class bplus_tree {
 
 		/* abstract operations */
 		RetCode search(const polar_race::PolarString& key, std::string *value) const;
-
-		// int search_range(polar_race::PolarString *left, const polar_race::PolarString &right,
-		//                 value_t *values, size_t max, bool *next = NULL) const;
+		RetCode search_range(const polar_race::PolarString &lower, 
+							 const polar_race::PolarString &upper, polar_race::Visitor& visitor) const;
+		
 		RetCode insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value);
 		metaData getMeta() const {
 			return meta;

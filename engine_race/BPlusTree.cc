@@ -124,58 +124,88 @@ RetCode bplus_tree::search(const polar_race::PolarString &key, std::string *valu
 	}
 }
 
-// int bplus_tree::search_range(polar_race::PolarString *left, const polar_race::PolarString &right,
-//                              value_t *values, size_t max, bool *next) const
-// {
-//     if (left == NULL || keycmp(*left, right) > 0)
-//         return -1;
+RetCode bplus_tree::search_range(const polar_race::PolarString &left, 
+							const polar_race::PolarString &right, polar_race::Visitor& visitor) const
+{
+	if (right != "" && left.compare(right) > 0) {
+		return RetCode::kInvalidArgument;
+	}
 
-//     off_t off_left = search_leaf(*left);
-//     off_t off_right = search_leaf(right);
-//     off_t off = off_left;
-//     size_t i = 0;
-//     record *b, *e;
+	off_t first_off, last_off;
+	if (left == "") {
+		first_off = meta.leaf_offset;
+		leafNode leaf;
+		while (true) {
+			disk_read(&leaf, first_off);
+			if (leaf.prev == 0) {
+				break;
+			}
+			first_off = leaf.prev;
+		}
+	}
+	else {
+		first_off = search_leaf(left);
+	}
+	if (right == "") {
+		last_off = meta.leaf_offset;
+	}
+	else {
+		last_off = search_leaf(right);
+	}
 
-//     leafNode leaf;
-//     while (off != off_right && off != 0 && i < max) {
-//         disk_read(&leaf, off);
+	off_t cur_off = first_off;
+	size_t i = 0;
+	record *First, *Last;
+	leafNode leaf;
 
-//         // start point
-//         if (off_left == off) 
-//             b = find(leaf, *left);
-//         else
-//             b = begin(leaf);
+	while (cur_off != last_off && cur_off != 0) {
+		disk_read(&leaf, cur_off);
+		if (cur_off == first_off && left != "") {
+			First = find(leaf, left);
+		}
+		else {
+			First = begin(leaf);
+		}
+		Last = end(leaf);
+		for (; First != Last; First++) {
+			char *valueBlock = new char[First->valueSize + 1];
+			bzero(valueBlock, First->valueSize + 1);
+			disk_read(valueBlock, First->valueOff, First->valueSize);
+			// printf("append: %s %s\n", leaf.getKey(First->keyOff, First->keySize).data(),
+			// 		polar_race::PolarString(valueBlock, First->valueSize).data());
+			visitor.Visit(leaf.getKey(First->keyOff, First->keySize), 
+						  polar_race::PolarString(valueBlock, First->valueSize));
+		}
+		cur_off = leaf.next;
+	}
 
-//         // copy
-//         e = leaf.children + leaf.n;
-//         for (; b != e && i < max; ++b, ++i)
-//             values[i] = b->value;
+	// the last leaf
+	disk_read(&leaf, last_off);
+	if (cur_off == first_off) {
+		First = find(leaf, left);
+	}
+	else {
+		First = begin(leaf);
+	}
+	
+	if (right == "") {
+		Last = end(leaf);
+	}
+	else {
+		Last = find(leaf, right);
+	}
+	for (; First != Last; First++) {
+		char *valueBlock = new char[First->valueSize + 1];
+		bzero(valueBlock, First->valueSize + 1);
+		disk_read(valueBlock, First->valueOff, First->valueSize);
+		// printf("append: %s %s\n", leaf.getKey(First->keyOff, First->keySize).data(),
+		// 		polar_race::PolarString(valueBlock, First->valueSize).data());
+		visitor.Visit(leaf.getKey(First->keyOff, First->keySize), 
+						polar_race::PolarString(valueBlock, First->valueSize));
+	}
 
-//         off = leaf.next;
-//     }
-
-//     // the last leaf
-//     if (i < max) {
-//         disk_read(&leaf, off_right);
-
-//         b = find(leaf, *left);
-//         e = upper_bound(begin(leaf), end(leaf), right);
-//         for (; b != e && i < max; ++b, ++i)
-//             values[i] = b->value;
-//     }
-
-//     // mark for next iteration
-//     if (next != NULL) {
-//         if (i == max && b != e) {
-//             *next = true;
-//             *left = b->key;
-//         } else {
-//             *next = false;
-//         }
-//     }
-
-//     return i;
-// }
+	return RetCode::kSucc;
+}
 
 RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_race::PolarString value)
 {
