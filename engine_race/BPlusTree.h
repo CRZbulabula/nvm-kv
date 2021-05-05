@@ -93,6 +93,13 @@ class internalNode {
 			return polar_race::PolarString(keyBlock, children[Index].keySize);
 		}
 
+		polar_race::PolarString getKey(off_t keyOff, size_t keySize) const {
+			char *keyBlock = new char[keySize + 1];
+			bzero(keyBlock, keySize + 1);
+			strncpy(keyBlock, pool + keyOff, keySize);
+			return polar_race::PolarString(keyBlock, keySize);
+		}
+
 		void insert_key(const polar_race::PolarString &key, index *where) {
 			strncpy(pool + slot, key.data(), key.size());
 			where->keyOff = slot;

@@ -66,6 +66,8 @@
         "string_view": "cpp",
         "fstream": "cpp",
         "mutex": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "xhash": "cpp",
+        "set": "cpp"
     }
 }

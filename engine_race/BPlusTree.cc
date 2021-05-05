@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include <list>
+#include <set>
 using std::swap;
 using std::binary_search;
 
@@ -221,7 +222,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 		//printf("pool: %s\n", leaf.pool);
 		for (int Index = 0; Index < point; Index++) {
 			//printf("append to new: %d %d\n", leaf.children[Index].keyOff, leaf.children[Index].keySize);
-			//printf("append to new key: %s\n", readKey(oldPool, leaf.children[Index].keyOff, leaf.children[Index].keySize));
 			new_leaf.append(readKey(oldPool, leaf.children[Index].keyOff, leaf.children[Index].keySize),
 							leaf.children[Index].valueOff, leaf.children[Index].valueSize);
 		}
@@ -250,7 +250,6 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	}
 
 	//tree_printf();
-	//puts("");
 	return polar_race::kSucc;
 }
 
@@ -316,12 +315,10 @@ void bplus_tree::insert_key_to_index(off_t offset, const polar_race::PolarString
 		node.slot = new_node.slot = 0;
 		//printf("pool: %s\n", node.pool);
 		for (int Index = 0; Index < point; Index++) {
-			//printf("append to new: %d %d\n", node.children[childIndex].keyOff, node.children[childIndex].keySize);
 			new_node.append(readKey(oldPool, node.children[Index].keyOff, node.children[Index].keySize),
 							node.children[Index].child);
 		}
 		for (int Index = point; Index < oldSize; Index++) {
-			//printf("append to old: %d %d\n", node.children[childIndex].keyOff, node.children[childIndex].keySize);
 			node.append(readKey(oldPool, node.children[Index].keyOff, node.children[Index].keySize),
 						node.children[Index].child);
 		}
@@ -352,9 +349,15 @@ void bplus_tree::insert_key_to_index_no_split(internalNode &node,
 											  const polar_race::PolarString &key, off_t value)
 {
 	index *where = node.lower_bound(key);
-	std::copy_backward(where, end(node), end(node) + 1);
-	node.insert_key(key, where);
-	where->child = value;
+	polar_race::PolarString lastKey = node.getKey(where->keyOff, where->keySize);
+	if (lastKey.compare(key) >= 0) {
+		std::copy_backward(where, end(node), end(node) + 1);
+		node.insert_key(key, where);
+		where->child = value;
+	}
+	else {
+		node.append(key, value);
+	}
 }
 
 void bplus_tree::reset_index_children_parent(index *begin, index *end,
