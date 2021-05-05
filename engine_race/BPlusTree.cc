@@ -225,6 +225,9 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 			where->valueOff = alloc(value.size());
 			disk_write(value.data(), where->valueOff, where->valueSize);
 			disk_write(&leaf, offset);
+
+			disk_write(&meta, OFFSET_META);
+			fsync();
 			return polar_race::kSucc;
 		}
 	}
@@ -280,6 +283,8 @@ RetCode bplus_tree::insert_or_update(const polar_race::PolarString& key, polar_r
 	}
 
 	//tree_printf();
+	disk_write(&meta, OFFSET_META);
+	fsync();
 	return polar_race::kSucc;
 }
 

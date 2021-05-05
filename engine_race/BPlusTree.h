@@ -7,7 +7,9 @@
 #include <assert.h>
 #include <limits>
 #include <algorithm>
+#include <vector>
 
+#include "logger.h"
 #include "include/polar_string.h"
 #include "include/engine.h"
 
@@ -317,6 +319,7 @@ class bplus_tree {
 			return rd - 1;
 		}
 
+		mutable std::vector<logBlock> logger;
 		template<class T>
 		int disk_read(T *block, off_t offset) const
 		{
@@ -324,7 +327,7 @@ class bplus_tree {
 		}
 
 		// write block to disk
-		int disk_write(const char *block, off_t offset, size_t size) const
+		int raw_disk_write(const char *block, off_t offset, size_t size) const
 		{
 			open_file();
 			fseek(fp, offset, SEEK_SET);
@@ -332,6 +335,24 @@ class bplus_tree {
 			close_file();
 
 			return wd - 1;
+		}
+		
+		void fsync()
+		{
+			for(auto log = logger.cbegin(); log != logger.cend(); log++)
+			{
+				raw_disk_write(log->log, log->offset, log->size);
+				delete[] log->log;
+			}
+			logger.clear();
+		}
+		// write block to disk
+		int disk_write(const char *block, off_t offset, size_t size) const
+		{
+			char* log = new char[size];
+			strncpy(log, block, size);
+			logger.push_back((logBlock){log, offset, size});
+			return 1;
 		}
 
 		int disk_write(void *block, off_t offset, size_t size) const
