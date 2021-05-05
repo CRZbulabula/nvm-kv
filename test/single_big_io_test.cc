@@ -8,7 +8,7 @@
 
 using namespace polar_race;
 
-#define KV_CNT 10000000
+#define KV_CNT 1000000
 
 char k[8192];
 char v[9024];
